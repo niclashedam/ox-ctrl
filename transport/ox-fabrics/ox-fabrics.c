@@ -1,11 +1,12 @@
 /* OX: Open-Channel NVM Express SSD Controller
  *
- *  - OX NVMe over Fabrics (server side) 
+ *  - OX NVMe over Fabrics (server side)
  *
- * Copyright 2018 IT University of Copenhagen
- * 
+ * Copyright 2019 IT University of Copenhagen
+ *
  * Written by Ivan Luiz Picoli <ivpi@itu.dk>
- * 
+ * Written by Niclas Hedam <nhed@itu.dk>
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -17,7 +18,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  */
 
 #include <stdlib.h>
@@ -169,7 +170,7 @@ static uint32_t oxf_fabrics_set_sgl (struct nvmef_capsule_sq *capsule,
                 desc[desc_i].data.addr = offset;
                 offset += desc[desc_i].data.length;
                 bytes += desc[desc_i].data.length;
-        }        
+        }
 
 NEXT:
         desc_i++;
@@ -188,7 +189,7 @@ NEXT:
     return bytes;
 }
 
-static void oxf_fabrics_set_direction (struct nvme_cmd *cmd, 
+static void oxf_fabrics_set_direction (struct nvme_cmd *cmd,
                                                     struct oxf_tgt_reply *rep)
 {
     switch (cmd->opcode) {
@@ -280,13 +281,13 @@ static void oxf_fabrics_rcv_fn (uint32_t size, void *arg, void *recv_cli)
                     break;
 
                 }
-                
+
                 break;
             }
 
             if (!retry)
                 log_err ("[ox-fabrics: Capsule not processed.]\n");
-            
+
             break;
         case OXF_RDMA_BYTE:
             // RDMA not implemented
@@ -398,8 +399,18 @@ static void oxf_exit (void)
         for (cid = 0; cid < OXF_SERVER_MAX_CON; cid++)
             oxf_destroy_queue (cid);
 
-        (OXF_PROTOCOL == OXF_UDP) ? oxf_udp_server_exit (fabrics.server) :
-                                    oxf_tcp_server_exit (fabrics.server);
+        switch (OXF_PROTOCOL) {
+            case OXF_UDP:
+                oxf_udp_server_exit (fabrics.server);
+                break;
+            case OXF_TCP:
+                oxf_tcp_server_exit (fabrics.server);
+                break;
+            case OXF_ROCE:
+                oxf_roce_server_exit (fabrics.server);
+                break;
+        }
+
         fabrics.running = 0;
     }
 
@@ -426,8 +437,18 @@ int ox_fabrics_init (void)
     if (!ox_mem_create_type ("OX_FABRICS", OX_MEM_FABRICS))
         return -1;
 
-    fabrics.server = (OXF_PROTOCOL == OXF_UDP) ? oxf_udp_server_init () :
-                                                 oxf_tcp_server_init ();
+    switch (OXF_PROTOCOL) {
+        case OXF_UDP:
+            fabrics.server = oxf_udp_server_init ();
+            break;
+        case OXF_TCP:
+            fabrics.server = oxf_tcp_server_init ();
+            break;
+        case OXF_ROCE:
+            fabrics.server = oxf_roce_server_init ();
+            break;
+    }
+
     if (!fabrics.server)
         return EMEM;
 

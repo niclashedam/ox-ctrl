@@ -138,17 +138,21 @@ install(TARGETS ox-transport-pci-fpga DESTINATION lib COMPONENT lib)
 set(SRC_TRANSP_FABRICS_H
         ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/udp-client.c
         ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/tcp-client.c
+        ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/roce-client.c
         ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/ox-host.c)
 add_library ( ox-fabrics-host STATIC ${SRC_TRANSP_FABRICS_H} )
 target_link_libraries ( ox-fabrics-host ox )
+target_link_libraries ( ox-fabrics-host rdmacm )
 install(TARGETS ox-fabrics-host DESTINATION lib COMPONENT lib)
 
 set(SRC_TRANSP_FABRICS_T
         ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/udp-server.c
         ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/tcp-server.c
+        ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/roce-server.c
         ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/ox-fabrics.c)
 add_library ( ox-transport-fabrics-tgt STATIC ${SRC_TRANSP_FABRICS_T} )
 target_link_libraries ( ox-transport-fabrics-tgt ox )
+target_link_libraries ( ox-transport-fabrics-tgt rdmacm )
 install(TARGETS ox-transport-fabrics-tgt DESTINATION lib COMPONENT lib)
 
 # OX Controller Targets

@@ -1,11 +1,12 @@
 /* OX: Open-Channel NVM Express SSD Controller
  *
- *  - OX NVMe over Fabrics (header) 
+ *  - OX NVMe over Fabrics (header)
  *
- * Copyright 2018 IT University of Copenhagen
- * 
+ * Copyright 2019 IT University of Copenhagen
+ *
  * Written by Ivan Luiz Picoli <ivpi@itu.dk>
- * 
+ * Written by Niclas Hedam <nhed@itu.dk>
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -17,7 +18,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  */
 
 #ifndef OX_FABRICS_H
@@ -44,7 +45,8 @@
 
 #define OXF_UDP         1
 #define OXF_TCP         2
-#define OXF_PROTOCOL    OXF_TCP
+#define OXF_ROCE        3
+#define OXF_PROTOCOL    OXF_ROCE
 
 #define OXF_REMOTE      0
 #define OXF_FULL_IFACES 0
@@ -241,6 +243,8 @@ struct oxf_server *oxf_udp_server_init (void);
 void               oxf_udp_server_exit (struct oxf_server *server);
 struct oxf_server *oxf_tcp_server_init (void);
 void               oxf_tcp_server_exit (struct oxf_server *server);
+struct oxf_server *oxf_roce_server_init (void);
+void               oxf_roce_server_exit (struct oxf_server *server);
 
 /* CLIENT */
 
@@ -268,6 +272,8 @@ struct oxf_client *oxf_udp_client_init (void);
 void               oxf_udp_client_exit (struct oxf_client *client);
 struct oxf_client *oxf_tcp_client_init (void);
 void               oxf_tcp_client_exit (struct oxf_client *client);
+struct oxf_client *oxf_roce_client_init (void);
+void               oxf_roce_client_exit (struct oxf_client *client);
 
 int oxf_get_sgl_desc_length (NvmeSGLDesc *desc);
 
