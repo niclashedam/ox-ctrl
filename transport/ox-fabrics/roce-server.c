@@ -39,7 +39,6 @@
 #include <ox-fabrics.h>
 #include <libox.h>
 
-
 /* Last connection ID that has received a 'connect' command */
 uint16_t pending_conn;
 
@@ -79,14 +78,38 @@ static int oxf_roce_server_reply(struct oxf_server_con *con, const void *buf,
 
 static int oxf_roce_server_con_start (struct oxf_server_con *con, oxf_rcv_fn *fn)
 {
-    //
+    if (con->running)
+        return 0;
+
+    con->running = 1;
+    con->rcv_fn = fn;
+
+    if (pthread_create (&con->tid, NULL, oxf_roce_server_accept_th, con)) {
+	log_err ("[ox-fabrics: Connection not started.]");
+	con->running = 0;
+	return -1;
+    }
+
+    return 0;
 }
 
 static void oxf_roce_server_con_stop (struct oxf_server_con *con)
 {
-    //
-}
+    uint32_t cli_id;
 
+    if (con && con->running)
+	con->running = 0;
+    else
+        return;
+
+    for (cli_id = 0; cli_id < OXF_SERVER_MAX_CON; cli_id++) {
+        if (con->active_cli[cli_id]) {
+            con->active_cli[cli_id] = 0;
+            pthread_join (con->cli_tid[cli_id], NULL);
+        }
+    }
+    pthread_join (con->tid, NULL);
+}
 void oxf_roce_server_exit (struct oxf_server *server)
 {
     uint32_t con_i;
@@ -117,7 +140,7 @@ struct oxf_server *oxf_roce_server_init (void){
 
     server->ops = &oxf_roce_srv_ops;
 
-    log_info ("[ox-fabrics: Protocol -> RoCE\n");
+    log_info ("[ox-fabrics: Protocol -> RoCE]\n");
 
     return server;
 }
