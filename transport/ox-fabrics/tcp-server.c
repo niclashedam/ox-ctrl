@@ -1,11 +1,11 @@
 /* OX: Open-Channel NVM Express SSD Controller
  *
- *  - OX NVMe over TCP (server side) 
+ *  - OX NVMe over TCP (server side)
  *
  * Copyright 2018 IT University of Copenhagen
- * 
+ *
  * Written by Ivan Luiz Picoli <ivpi@itu.dk>
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -17,7 +17,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  */
 
 #define _GNU_SOURCE
@@ -77,7 +77,7 @@ static struct oxf_server_con *oxf_tcp_server_bind (struct oxf_server *server,
     con->addr.sin_port = htons(port);
 
     if ( bind(con->sock_fd, (const struct sockaddr *) &con->addr,
-                					sizeof(con->addr)) < 0 ) 
+                					sizeof(con->addr)) < 0 )
     {
         log_err ("[ox-fabrics (bind): Socket bind failure.]");
         goto ERR;

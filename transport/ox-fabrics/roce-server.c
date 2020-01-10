@@ -39,25 +39,149 @@
 #include <ox-fabrics.h>
 #include <libox.h>
 
+#define OXF_ROCE_DEBUG   0
+
 /* Last connection ID that has received a 'connect' command */
 uint16_t pending_conn;
 
 static struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
                                 uint16_t cid, const char *addr, uint16_t port)
 {
-    //
+    struct oxf_server_con *con;
+    int ret;
+    struct rdma_addrinfo hints, *res;
+    struct ibv_qp_init_attr init_attr;
+
+    if (cid > OXF_SERVER_MAX_CON) {
+        log_err ("[ox-fabrics (bind): Invalid connection ID: %d]", cid);
+        return NULL;
+    }
+
+    if (server->connections[cid]) {
+        log_err ("[ox-fabrics (bind): Connection already established: %d]", cid);
+        return NULL;
+    }
+
+    con = ox_malloc (sizeof (struct oxf_server_con), OX_MEM_ROCE_SERVER);
+    if (!con)
+	return NULL;
+
+    con->cid = cid;
+    con->server = server;
+    con->running = 0;
+    memset (con->active_cli, 0x0, OXF_SERVER_MAX_CON * sizeof (int));
+
+    char cport[16];
+    snprintf(cport, sizeof(cport), "%d", port);
+
+	memset(&hints, 0, sizeof hints);
+    hints.ai_flags = RAI_PASSIVE;
+    hints.ai_port_space = RDMA_PS_TCP;
+
+    ret = rdma_getaddrinfo(addr, cport, &hints, &res);
+    if (ret) {
+        log_err ("[ox-fabrics (bind): Socket creation failure. %d. %s]", con->sock_fd, gai_strerror(ret));
+        ox_free (con, OX_MEM_ROCE_SERVER);
+        return NULL;
+	}
+
+    ret = rdma_create_ep(&con->listen_id, res, NULL, &init_attr);
+	if (ret) {
+        log_err ("[ox-fabrics (bind): RoCE create EP failure.]");
+        ox_free (con, OX_MEM_ROCE_SERVER);
+        return NULL;
+    }
+
+    ret = rdma_listen(con->listen_id, 0);
+    if (ret) {
+        rdma_destroy_ep(con->listen_id);
+        log_err ("[ox-fabrics (bind): RoCE listen failure.]");
+        goto ERR;
+    }
+
+    server->connections[cid] = con;
+    server->n_con++;
+
+    memcpy (con->haddr.addr, addr, 15);
+    con->haddr.addr[15] = '\0';
+    con->haddr.port = port;
+
+    return con;
+
+ERR:
+    shutdown (con->sock_fd, 2);
+    close (con->sock_fd);
+    ox_free (con, OX_MEM_ROCE_SERVER);
+    return NULL;
 }
 
 static void oxf_roce_server_unbind (struct oxf_server_con *con)
 {
-    //
+    if (con) {
+        rdma_destroy_ep(con->id);
+        rdma_destroy_ep(con->listen_id);
+        con->server->connections[con->cid] = NULL;
+        con->server->n_con--;
+        ox_free (con, OX_MEM_ROCE_SERVER);
+    }
 }
-
 static uint16_t oxf_roce_server_process_msg (struct oxf_server_con *con,
                 uint8_t *buffer, uint8_t *broken, uint16_t *brkb,
                 uint16_t conn_id, int msg_bytes)
 {
-    //
+    uint16_t offset = 0, fix = 0, msg_sz, brk_bytes = *brkb;
+
+    if (brk_bytes) {
+
+        if (brk_bytes < 3) {
+
+            if (msg_bytes + brk_bytes < 3) {
+                memcpy (&broken[brk_bytes], buffer, msg_bytes);
+                brk_bytes += msg_bytes;
+                return brk_bytes;
+            }
+
+            memcpy (&broken[brk_bytes], buffer, 3 - brk_bytes);
+            offset = fix = 3 - brk_bytes;
+            msg_bytes -= 3 - brk_bytes;
+            brk_bytes = 3;
+            if (!msg_bytes)
+                return brk_bytes;
+        }
+
+        msg_sz = ((struct oxf_capsule_sq *) broken)->size;
+
+        if (brk_bytes + msg_bytes < msg_sz) {
+            memcpy (&broken[brk_bytes], &buffer[offset], msg_bytes);
+            brk_bytes += msg_bytes;
+            return brk_bytes;
+        }
+
+        memcpy (&broken[brk_bytes], &buffer[offset], msg_sz - brk_bytes);
+        con->rcv_fn (msg_sz, (void *) broken,
+                                            (void *) &con->active_cli[conn_id]);
+        offset += msg_sz - brk_bytes;
+        brk_bytes = 0;
+    }
+
+    msg_bytes += fix;
+    while (offset < msg_bytes) {
+        if ( (msg_bytes - offset < 3) ||
+            (msg_bytes - offset <
+                         ((struct oxf_capsule_sq *) &buffer[offset])->size) ) {
+            memcpy (broken, &buffer[offset], msg_bytes - offset);
+            brk_bytes = msg_bytes - offset;
+            offset += msg_bytes - offset;
+            continue;
+        }
+
+        msg_sz = ((struct oxf_capsule_sq *) &buffer[offset])->size;
+        con->rcv_fn (msg_sz, (void *) &buffer[offset],
+                                           (void *) &con->active_cli[conn_id]);
+        offset += msg_sz;
+    }
+
+    return brk_bytes;
 }
 
 static void *oxf_roce_server_con_th (void *arg)

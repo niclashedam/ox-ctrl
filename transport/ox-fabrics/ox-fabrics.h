@@ -33,6 +33,8 @@
 #include <pthread.h>
 #include <nvme.h>
 #include <nvmef.h>
+#include <rdma/rdma_cma.h>
+#include <rdma/rdma_verbs.h>
 
 #define OXF_DEBUG       0
 
@@ -48,14 +50,14 @@
 #define OXF_ROCE        3
 #define OXF_PROTOCOL    OXF_ROCE
 
-#define OXF_REMOTE      0
+#define OXF_REMOTE      1
 #define OXF_FULL_IFACES 0
 
 #if OXF_REMOTE
-#define OXF_ADDR_1       "192.168.0.2"
-#define OXF_ADDR_2       "192.168.1.2"
-#define OXF_ADDR_3       "192.168.2.2"
-#define OXF_ADDR_4       "192.168.3.2"
+#define OXF_ADDR_1       "10.2.1.1"
+#define OXF_ADDR_2       "10.2.1.1"
+#define OXF_ADDR_3       "10.2.1.1"
+#define OXF_ADDR_4       "10.2.1.1"
 #else
 #define OXF_ADDR_1       "127.0.0.1"
 #define OXF_ADDR_2       "127.0.0.1"
@@ -201,6 +203,11 @@ struct oxf_server_con {
         int                  active_cli[OXF_SERVER_MAX_CON];
         pthread_t            cli_tid[OXF_SERVER_MAX_CON];
 	int                  sock_fd;
+
+    // for RoCE
+    struct rdma_cm_id *listen_id, *id;
+    struct ibv_qp_init_attr init_attr;
+    struct ibv_qp_attr qp_attr;
 };
 
 struct oxf_client_con {

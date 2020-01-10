@@ -142,7 +142,7 @@ set(SRC_TRANSP_FABRICS_H
         ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/ox-host.c)
 add_library ( ox-fabrics-host STATIC ${SRC_TRANSP_FABRICS_H} )
 target_link_libraries ( ox-fabrics-host ox )
-target_link_libraries ( ox-fabrics-host rdmacm )
+target_link_libraries ( ox-fabrics-host rdmacm ibverbs )
 install(TARGETS ox-fabrics-host DESTINATION lib COMPONENT lib)
 
 set(SRC_TRANSP_FABRICS_T
@@ -152,7 +152,7 @@ set(SRC_TRANSP_FABRICS_T
         ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/ox-fabrics.c)
 add_library ( ox-transport-fabrics-tgt STATIC ${SRC_TRANSP_FABRICS_T} )
 target_link_libraries ( ox-transport-fabrics-tgt ox )
-target_link_libraries ( ox-transport-fabrics-tgt rdmacm )
+target_link_libraries ( ox-transport-fabrics-tgt rdmacm ibverbs )
 install(TARGETS ox-transport-fabrics-tgt DESTINATION lib COMPONENT lib)
 
 # OX Controller Targets
