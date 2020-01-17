@@ -205,9 +205,7 @@ struct oxf_server_con {
 	int                  sock_fd;
 
     // for RoCE
-    struct rdma_cm_id *listen_id, *id;
-    struct ibv_qp_init_attr init_attr;
-    struct ibv_qp_attr qp_attr;
+    struct rdma_cm_id *listen_id;
 };
 
 struct oxf_client_con {

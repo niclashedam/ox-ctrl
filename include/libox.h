@@ -184,7 +184,6 @@ enum OX_MEM_TYPES {
     OX_MEM_ELEOS_W      = 29,
     OX_MEM_ELEOS_LBA    = 30,
     OX_MEM_APP_HMAP     = 31, /* 31-40 belong to HMAP instances */
-    OX_MEM_ROCE_SERVER  = 41,
 };
 
 enum ox_stats_recovery_types {
