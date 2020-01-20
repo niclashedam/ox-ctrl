@@ -204,7 +204,26 @@ ACK:
 static int oxf_roce_server_reply(struct oxf_server_con *con, const void *buf,
                                                  uint32_t size, void *recv_cli)
 {
-    // TODO
+    struct ibv_wc wc;
+    struct rdma_cm_id *id = (struct rdma_cm_id *) recv_cli;
+    struct ibv_mr *mr = rdma_reg_msgs(id, &buf, 16);
+
+    int ret = rdma_post_send(id, NULL, &buf, 16, mr, 0);
+	if (ret) goto SEND_ERROR;
+
+	while ((ret = rdma_get_send_comp(id, &wc)) == 0);
+	if (ret < 0)
+		goto SEND_ERROR;
+	else
+		ret = 0;
+
+SEND_ERROR:
+    if (ret) {
+        log_err ("[ox-fabrics: Completion reply hasn't been sent. %d]", ret);
+        return -1;
+    }
+
+    return 0;
 }
 
 static int oxf_roce_server_con_start (struct oxf_server_con *con, oxf_rcv_fn *fn)
