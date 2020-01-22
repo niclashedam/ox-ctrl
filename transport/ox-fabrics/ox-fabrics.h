@@ -216,6 +216,9 @@ struct oxf_client_con {
         pthread_t            recv_th;
         oxf_rcv_reply_fn    *recv_fn;
         uint8_t              running;
+
+    // for RoCE
+    struct rdma_cm_id *listen_id;
 };
 
 /* SERVER */

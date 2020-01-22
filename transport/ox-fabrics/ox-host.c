@@ -1,11 +1,11 @@
 /* OX: Open-Channel NVM Express SSD Controller
  *
- *  - OX NVMe over Fabrics (client side) 
+ *  - OX NVMe over Fabrics (client side)
  *
  * Copyright 2018 IT University of Copenhagen
- * 
+ *
  * Written by Ivan Luiz Picoli <ivpi@itu.dk>
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -17,7 +17,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  */
 
 #include <stdio.h>
@@ -439,7 +439,7 @@ static int oxf_host_send_connect (uint16_t qid)
     desc->type           = NVME_SGL_DATA_BLOCK;
     desc->subtype        = NVME_SGL_SUB_OFFSET;
 
-    /* Here we send In Capsule data, however, the Spec does not support it in 
+    /* Here we send In Capsule data, however, the Spec does not support it in
         the Admin queue */
     desc->data.addr      = 0;
     desc->data.length    = sizeof (NvmefConnectData);
@@ -577,7 +577,7 @@ void oxf_host_destroy_queue (uint16_t qid)
     TAILQ_INIT(&fabrics.queues[qid].cmd_fh);
     TAILQ_INIT(&fabrics.queues[qid].cmd_uh);
 
-    pthread_spin_destroy (&fabrics.queues[qid].cmd_spin);    
+    pthread_spin_destroy (&fabrics.queues[qid].cmd_spin);
     free (fabrics.queues[qid].cmds);
     ox_mq_destroy (fabrics.queues[qid].mq);
 }
@@ -611,8 +611,10 @@ int oxf_host_init (void)
     if (!ox_mem_create_type ("OX_MQ", OX_MEM_OX_MQ))
         goto EXIT;
 
-    fabrics.client = (OXF_PROTOCOL == OXF_UDP) ? oxf_udp_client_init () :
-                                                 oxf_tcp_client_init ();
+    if(OXF_PROTOCOL == OXF_UDP)     fabrics.client = oxf_udp_client_init ();
+    if(OXF_PROTOCOL == OXF_TCP)     fabrics.client = oxf_tcp_client_init ();
+    if(OXF_PROTOCOL == OXF_ROCE)    fabrics.client = oxf_roce_client_init ();
+
     if (!fabrics.client)
         goto EXIT;
 
@@ -640,8 +642,10 @@ void oxf_host_exit (void)
             oxf_host_destroy_queue (qid);
         }
 
-        (OXF_PROTOCOL == OXF_UDP) ? oxf_udp_client_exit (fabrics.client) :
-                                    oxf_tcp_client_exit (fabrics.client);
+        if (OXF_PROTOCOL == OXF_UDP) oxf_udp_client_exit (fabrics.client);
+        if (OXF_PROTOCOL == OXF_TCP) oxf_tcp_client_exit (fabrics.client);
+        if (OXF_PROTOCOL == OXF_ROCE) oxf_roce_client_exit (fabrics.client);
+
     }
 
     ox_mem_exit();

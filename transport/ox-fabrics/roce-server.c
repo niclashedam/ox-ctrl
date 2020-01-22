@@ -2,7 +2,7 @@
  *
  *  - OX NVMe over RoCE (server side)
  *
- * Copyright 2019 IT University of Copenhagen
+ * Copyright 2020 IT University of Copenhagen
  *
  * Written by Niclas Hedam <nhed@itu.dk>
  *
@@ -60,7 +60,7 @@ static struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
     struct oxf_server_con *con;
     int ret;
     struct rdma_addrinfo hints, *res;
-    struct ibv_qp_init_attr init_attr;
+    struct ibv_qp_init_attr attr;
 
     if (cid > OXF_SERVER_MAX_CON) {
         log_err ("[ox-fabrics (bind): Invalid connection ID: %d]", cid);
@@ -76,6 +76,9 @@ static struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
     if (!con)
 	return NULL;
 
+    /* Change port for different connections */
+    port = port + cid;
+
     con->cid = cid;
     con->server = server;
     con->running = 0;
@@ -85,6 +88,11 @@ static struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
 
     char cport[16];
     snprintf(cport, sizeof(cport), "%d", port);
+
+    memset(&attr, 0, sizeof attr);
+    attr.cap.max_send_wr = attr.cap.max_recv_wr = 1;
+    attr.cap.max_send_sge = attr.cap.max_recv_sge = 1;
+    attr.sq_sig_all = 1;
 
 	memset(&hints, 0, sizeof hints);
     hints.ai_flags = RAI_PASSIVE;
@@ -97,7 +105,7 @@ static struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
         return NULL;
 	}
 
-    ret = rdma_create_ep(&con->listen_id, res, NULL, &init_attr);
+    ret = rdma_create_ep(&con->listen_id, res, NULL, &attr);
 	if (ret) {
         log_err ("[ox-fabrics (bind): RoCE create EP failure.]");
         free (con);
@@ -127,7 +135,6 @@ ERR:
 static void *oxf_roce_server_con_th (void *arg)
 {
     struct oxf_server_con *con = (struct oxf_server_con *) arg;
-    struct sockaddr_in client;
     uint8_t buffer[OXF_MAX_DGRAM + 1];
     uint8_t ack[2];
     int n, ret;
@@ -141,6 +148,7 @@ static void *oxf_roce_server_con_th (void *arg)
         ret = rdma_get_request(con->listen_id, &id);
         if(ret){
             log_err ("[ox-fabrics: error in rdma_get_request]");
+            perror("Received connection, but something broke");
             continue;
         }
 
@@ -161,8 +169,10 @@ static void *oxf_roce_server_con_th (void *arg)
 
         while ((ret = rdma_get_recv_comp(id, &wc)) == 0);
         if (ret < 0) {
+            perror("rdma_get_recv_comp");
             rdma_disconnect(id);
             rdma_destroy_ep(id);
+            return NULL;
         }
 
         n = wc.byte_len;
@@ -174,13 +184,14 @@ static void *oxf_roce_server_con_th (void *arg)
         if (n == 1 && (buffer[0] == OXF_CON_BYTE) )
             goto ACK;
 
-        con->rcv_fn (n, (void *) buffer, (void *) &client);
+        con->rcv_fn (n, (void *) buffer, (void *) &id);
         continue;
 
 ACK:
 
         ret = rdma_post_send(id, NULL, ack, 1, ack_mr, 0);
         if (ret) {
+            perror("rdma_post_send");
             log_err ("[ox-fabrics: error in rdma_post_send]");
             rdma_disconnect(id);
             rdma_destroy_ep(id);
@@ -189,6 +200,7 @@ ACK:
 
         while ((ret = rdma_get_send_comp(id, &wc)) == 0);
 	    if (ret < 0){
+            perror("rdma_get_send_comp");
             log_err ("[ox-fabrics: Connect ACK hasn't been sent.]");
             rdma_disconnect(id);
             rdma_destroy_ep(id);

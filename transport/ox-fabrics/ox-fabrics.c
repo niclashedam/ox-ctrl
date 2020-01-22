@@ -252,6 +252,9 @@ static void oxf_fabrics_rcv_fn (uint32_t size, void *arg, void *recv_cli)
                     case OXF_UDP:
                         memcpy (reply->cli, recv_cli, sizeof (struct sockaddr));
                         break;
+                    case OXF_ROCE:
+                        memcpy (reply->cli, recv_cli, sizeof (struct rdma_cm_id));
+                        break;
                     case OXF_TCP:
                         default:
                         memcpy (reply->cli, recv_cli, sizeof (int));

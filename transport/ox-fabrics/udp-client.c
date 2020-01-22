@@ -1,11 +1,11 @@
 /* OX: Open-Channel NVM Express SSD Controller
  *
- *  - OX NVMe over UDP (client side) 
+ *  - OX NVMe over UDP (client side)
  *
  * Copyright 2018 IT University of Copenhagen
- * 
+ *
  * Written by Ivan Luiz Picoli <ivpi@itu.dk>
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -17,7 +17,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  */
 
 #include <stdio.h>
@@ -40,7 +40,7 @@ static void *oxf_udp_client_recv (void *arg)
 
     len = sizeof (struct sockaddr);
     while (con->running) {
-        n = recvfrom(con->sock_fd, (char *) buf, OXF_MAX_DGRAM,  
+        n = recvfrom(con->sock_fd, (char *) buf, OXF_MAX_DGRAM,
                             MSG_WAITALL, ( struct sockaddr *) &con->addr, &len);
         if (n > 0)
             con->recv_fn (n, (void *) buf);
@@ -73,13 +73,14 @@ static struct oxf_client_con *oxf_udp_client_connect (struct oxf_client *client,
 	return NULL;
 
     /* Change port for different connections */
-    port = port + cid;
+    // TODO (nhed): This can't be right. If we change the port, we cannot connect anymore
+    // port = port + cid;
 
     con->cid = cid;
     con->client = client;
     con->recv_fn = recv_fn;
 
-    if ( (con->sock_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) { 
+    if ( (con->sock_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) {
         free (con);
         return NULL;
     }
@@ -102,7 +103,7 @@ static struct oxf_client_con *oxf_udp_client_connect (struct oxf_client *client,
     sendto(con->sock_fd, (void *) connect, 1, MSG_CONFIRM,
                                    (const struct sockaddr *) &con->addr, len);
 
-    n = recvfrom(con->sock_fd, (char *) ack, OXF_MAX_DGRAM,  
+    n = recvfrom(con->sock_fd, (char *) ack, OXF_MAX_DGRAM,
                             MSG_WAITALL, ( struct sockaddr *) &con->addr, &len);
     if (n != 1) {
         printf ("[ox-fabrics: Server does not respond.]\n");
