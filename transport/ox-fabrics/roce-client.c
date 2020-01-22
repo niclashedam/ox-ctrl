@@ -33,6 +33,8 @@
 #include <ox-fabrics.h>
 #include <libox.h>
 
+#include "roce-helper.h"
+
 static void *oxf_roce_client_recv (void *arg)
 {
     int n;
@@ -54,10 +56,11 @@ static void *oxf_roce_client_recv (void *arg)
 static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client,
        uint16_t cid, const char *addr, uint16_t port, oxf_rcv_reply_fn *recv_fn)
 {
-    struct oxf_client_con *con = NULL;
+    struct oxf_client_con *con = calloc (1, sizeof (struct oxf_client_con));
+    if (!con) return NULL;
+
     int ret;
-    struct rdma_addrinfo hints, *res = NULL;
-    struct ibv_qp_init_attr attr;
+    struct rdma_addrinfo *res = NULL;
     struct rdma_cm_id *id = NULL;
     uint8_t connect[2], ack[2];
 
@@ -71,10 +74,6 @@ static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client
         return NULL;
     }
 
-    con = calloc (1, sizeof (struct oxf_client_con));
-    if (!con)
-	return NULL;
-
     // Here the port would have been increased
 
     con->cid = cid;
@@ -84,30 +83,19 @@ static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client
     char cport[16];
     snprintf(cport, sizeof(cport), "%d", port);
 
-    memset(&hints, 0, sizeof hints);
-    hints.ai_port_space = RDMA_PS_UDP;
-
-    connect[0] = OXF_CON_BYTE;
-
-	memset(&attr, 0, sizeof attr);
-    attr.cap.max_send_wr = attr.cap.max_recv_wr = 1;
-	attr.cap.max_send_sge = attr.cap.max_recv_sge = 1;
-	attr.sq_sig_all = 1;
-
-    ret = rdma_getaddrinfo(addr, cport, &hints, &res);
+    ret = rdma_getaddrinfo(addr, cport, hints(0), &res);
     if (ret) {
         log_err ("[ox-fabrics: Socket creation failure. %d. %s]", con->sock_fd, gai_strerror(ret));
         goto NOT_CONNECTED;
     }
 
-    ret = rdma_create_ep(&id, res, NULL, &attr);
+    ret = rdma_create_ep(&id, res, NULL, attr());
     if (ret) {
         log_err ("[ox-fabrics: RoCE create EP failure.]");
         goto NOT_CONNECTED;
     }
 
     struct ibv_wc wc;
-    struct ibv_mr *mr_ack = rdma_reg_msgs(id, ack, 2);
 
     ret = rdma_connect(id, NULL);
     if (ret) {
@@ -131,7 +119,7 @@ static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client
         goto NOT_CONNECTED;
     }
 
-    ret = rdma_post_recv(id, NULL, ack, 2, mr_ack);
+    ret = rdma_post_recv(id, NULL, ack, 2, NULL);
 
     if(ret){
         log_err ("[ox-fabrics: error in rdma_post_recv]");

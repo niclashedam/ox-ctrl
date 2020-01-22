@@ -39,7 +39,7 @@
 #include <ox-fabrics.h>
 #include <libox.h>
 
-#define OXF_ROCE_DEBUG   0
+#include "roce-helper.h"
 
 /* Last connection ID that has received a 'connect' command */
 uint16_t pending_conn;
@@ -57,10 +57,11 @@ static void oxf_roce_server_unbind (struct oxf_server_con *con)
 static struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
                                 uint16_t cid, const char *addr, uint16_t port)
 {
-    struct oxf_server_con *con;
+    struct oxf_server_con *con = malloc (sizeof (struct oxf_server_con));;
+    if(!con) return NULL;
+
     int ret;
-    struct rdma_addrinfo hints, *res;
-    struct ibv_qp_init_attr attr;
+    struct rdma_addrinfo *res;
 
     if (cid > OXF_SERVER_MAX_CON) {
         log_err ("[ox-fabrics (bind): Invalid connection ID: %d]", cid);
@@ -71,10 +72,6 @@ static struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
         log_err ("[ox-fabrics (bind): Connection already established: %d]", cid);
         return NULL;
     }
-
-    con = malloc (sizeof (struct oxf_server_con));
-    if (!con)
-	return NULL;
 
     /* Change port for different connections */
     port = port + cid;
@@ -89,32 +86,17 @@ static struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
     char cport[16];
     snprintf(cport, sizeof(cport), "%d", port);
 
-    memset(&attr, 0, sizeof attr);
-    attr.cap.max_send_wr = attr.cap.max_recv_wr = 1;
-    attr.cap.max_send_sge = attr.cap.max_recv_sge = 1;
-    attr.sq_sig_all = 1;
-
-	memset(&hints, 0, sizeof hints);
-    hints.ai_flags = RAI_PASSIVE;
-    hints.ai_port_space = RDMA_PS_UDP;
-
-    ret = rdma_getaddrinfo(addr, cport, &hints, &res);
+    ret = rdma_getaddrinfo(addr, cport, hints(1), &res);
+    ret = rdma_create_ep(&con->listen_id, res, NULL, attr());
     if (ret) {
-        log_err ("[ox-fabrics (bind): Socket creation failure. %d. %s]", con->sock_fd, gai_strerror(ret));
-        free (con);
-        return NULL;
-	}
-
-    ret = rdma_create_ep(&con->listen_id, res, NULL, &attr);
-	if (ret) {
-        log_err ("[ox-fabrics (bind): RoCE create EP failure.]");
-        free (con);
-        return NULL;
+        log_err ("[ox-fabrics: RoCE create EP failure.]");
+        perror("RoCE EP creation failture");
+	goto ERR;
     }
 
     ret = rdma_listen(con->listen_id, 0);
     if (ret) {
-        log_err ("[ox-fabrics (bind): RoCE listen failure.]");
+        log_err ("[ox-fabrics: RoCE listen failure.]");
         goto ERR;
     }
 
@@ -140,7 +122,6 @@ static void *oxf_roce_server_con_th (void *arg)
     int n, ret;
 
     struct rdma_cm_id *id;
-    struct ibv_mr *mr, *ack_mr;
     struct ibv_wc wc;
 
     ack[0] = OXF_ACK_BYTE;
@@ -152,10 +133,7 @@ static void *oxf_roce_server_con_th (void *arg)
             continue;
         }
 
-        mr = rdma_reg_msgs(id, buffer, OXF_MAX_DGRAM + 1);
-        ack_mr = rdma_reg_msgs(id, ack, 1);
-
-        ret = rdma_post_recv(id, NULL, buffer, OXF_MAX_DGRAM + 1, mr);
+        ret = rdma_post_recv(id, NULL, buffer, OXF_MAX_DGRAM + 1, NULL);
         if(ret){
             log_err ("[ox-fabrics: error in rdma_post_recv]");
             continue;
@@ -189,7 +167,7 @@ static void *oxf_roce_server_con_th (void *arg)
 
 ACK:
 
-        ret = rdma_post_send(id, NULL, ack, 1, ack_mr, 0);
+        ret = rdma_post_send(id, NULL, ack, 1, NULL, 0);
         if (ret) {
             perror("rdma_post_send");
             log_err ("[ox-fabrics: error in rdma_post_send]");
@@ -218,9 +196,8 @@ static int oxf_roce_server_reply(struct oxf_server_con *con, const void *buf,
 {
     struct ibv_wc wc;
     struct rdma_cm_id *id = (struct rdma_cm_id *) recv_cli;
-    struct ibv_mr *mr = rdma_reg_msgs(id, &buf, 16);
 
-    int ret = rdma_post_send(id, NULL, &buf, 16, mr, 0);
+    int ret = rdma_post_send(id, NULL, &buf, 16, NULL, 0);
 	if (ret) goto SEND_ERROR;
 
 	while ((ret = rdma_get_send_comp(id, &wc)) == 0);
