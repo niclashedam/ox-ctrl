@@ -27,13 +27,18 @@
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
 
+#include "ox-fabrics.h"
+
+#define MAX_INLINE_DATA 16
+
 inline static struct ibv_qp_init_attr *attr (void)
 {
     struct ibv_qp_init_attr *attr = malloc(sizeof *attr);
     memset(attr, 0, sizeof *attr);
+    attr->qp_type = IBV_QPT_RC;
     attr->cap.max_send_wr = attr->cap.max_recv_wr = 1;
     attr->cap.max_send_sge = attr->cap.max_recv_sge = 1;
-    attr->cap.max_inline_data = 16;
+    attr->cap.max_inline_data = MAX_INLINE_DATA;
     attr->sq_sig_all = 1;
     return attr;
 }
@@ -43,6 +48,12 @@ inline static struct rdma_addrinfo *hints (short isServer)
     struct rdma_addrinfo *hints = malloc(sizeof *hints);
     memset(hints, 0, sizeof *hints);
     hints->ai_port_space = RDMA_PS_TCP;
+    hints->ai_qp_type = IBV_QPT_RC;
     if(isServer) hints->ai_flags = RAI_PASSIVE;
     return hints;
+}
+
+inline static int send_flags(uint32_t size){
+    printf("Using %d due to size %u\n", MAX_INLINE_DATA >= size ? IBV_SEND_INLINE : 0, size);
+    return MAX_INLINE_DATA >= size ? IBV_SEND_INLINE : 0;
 }

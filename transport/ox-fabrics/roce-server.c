@@ -64,12 +64,12 @@ static struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
     struct rdma_addrinfo *res;
 
     if (cid > OXF_SERVER_MAX_CON) {
-        log_err ("[ox-fabrics (bind): Invalid connection ID: %d]", cid);
+        log_err ("[ox-fabrics: Invalid connection ID: %d]", cid);
         return NULL;
     }
 
     if (server->connections[cid]) {
-        log_err ("[ox-fabrics (bind): Connection already established: %d]", cid);
+        log_err ("[ox-fabrics: Connection already established: %d]", cid);
         return NULL;
     }
 
@@ -94,11 +94,15 @@ static struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
 	goto ERR;
     }
 
+    printf("ID\n");
+
     ret = rdma_listen(con->listen_id, 0);
     if (ret) {
         log_err ("[ox-fabrics: RoCE listen failure.]");
         goto ERR;
     }
+
+    printf("Listen\n");
 
     server->connections[cid] = con;
     server->n_con++;
@@ -126,6 +130,7 @@ static void *oxf_roce_server_con_th (void *arg)
 
     ack[0] = OXF_ACK_BYTE;
     while (con->running) {
+        printf("Waiting ..\n");
         ret = rdma_get_request(con->listen_id, &id);
         if(ret){
             log_err ("[ox-fabrics: error in rdma_get_request]");
@@ -133,17 +138,24 @@ static void *oxf_roce_server_con_th (void *arg)
             continue;
         }
 
-        ret = rdma_post_recv(id, NULL, buffer, OXF_MAX_DGRAM + 1, NULL);
+        printf("Receiving\n");
+
+        struct ibv_mr *mr = rdma_reg_msgs(id, buffer, OXF_MAX_DGRAM + 1);
+        ret = rdma_post_recv(id, NULL, buffer, OXF_MAX_DGRAM, mr);
         if(ret){
             log_err ("[ox-fabrics: error in rdma_post_recv]");
             continue;
         }
+
+        printf("Accepting\n");
 
         ret = rdma_accept(id, NULL);
         if (ret) {
             log_err ("[ox-fabrics: error in rdma_accept]");
             continue;
         }
+
+        printf("Will receive\n");
 
         while ((ret = rdma_get_recv_comp(id, &wc)) == 0);
         if (ret < 0) {
@@ -153,8 +165,12 @@ static void *oxf_roce_server_con_th (void *arg)
             return NULL;
         }
 
+        printf("Received\n");
+
         n = wc.byte_len;
         buffer[n] = '\0';
+
+        printf("n = %d, b0 = %d, con_byte = %d\n", n, buffer[0], OXF_CON_BYTE);
 
         if (n < 0)
             continue;
@@ -167,7 +183,9 @@ static void *oxf_roce_server_con_th (void *arg)
 
 ACK:
 
-        ret = rdma_post_send(id, NULL, ack, 1, NULL, 0);
+        printf("Before ACK\n");
+
+        ret = rdma_post_send(id, NULL, ack, 1, NULL, send_flags(1));
         if (ret) {
             perror("rdma_post_send");
             log_err ("[ox-fabrics: error in rdma_post_send]");
@@ -176,14 +194,18 @@ ACK:
             return NULL;
         }
 
+        printf("During ACK\n");
+
         while ((ret = rdma_get_send_comp(id, &wc)) == 0);
-	    if (ret < 0){
+        if (ret < 0){
             perror("rdma_get_send_comp");
             log_err ("[ox-fabrics: Connect ACK hasn't been sent.]");
             rdma_disconnect(id);
             rdma_destroy_ep(id);
             return NULL;
         }
+
+         printf("After ack\n");
     }
 
     log_err ("[ox-fabrics: Connection %d is closed.]", con->cid);
@@ -197,14 +219,12 @@ static int oxf_roce_server_reply(struct oxf_server_con *con, const void *buf,
     struct ibv_wc wc;
     struct rdma_cm_id *id = (struct rdma_cm_id *) recv_cli;
 
-    int ret = rdma_post_send(id, NULL, &buf, 16, NULL, 0);
-	if (ret) goto SEND_ERROR;
+    int ret = rdma_post_send(id, NULL, &buf, size, NULL, send_flags(size));
+    if (ret) goto SEND_ERROR;
 
-	while ((ret = rdma_get_send_comp(id, &wc)) == 0);
-	if (ret < 0)
-		goto SEND_ERROR;
-	else
-		ret = 0;
+    while ((ret = rdma_get_send_comp(id, &wc)) == 0);
+    if (ret < 0) goto SEND_ERROR;
+    else ret = 0;
 
 SEND_ERROR:
     if (ret) {

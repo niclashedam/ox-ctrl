@@ -54,10 +54,10 @@
 #define OXF_FULL_IFACES 0
 
 #if OXF_REMOTE
-#define OXF_ADDR_1       "10.2.1.1"
-#define OXF_ADDR_2       "10.2.1.1"
-#define OXF_ADDR_3       "10.2.1.1"
-#define OXF_ADDR_4       "10.2.1.1"
+#define OXF_ADDR_1       "10.2.1.2"
+#define OXF_ADDR_2       "10.2.1.2"
+#define OXF_ADDR_3       "10.2.1.2"
+#define OXF_ADDR_4       "10.2.1.2"
 #else
 #define OXF_ADDR_1       "127.0.0.1"
 #define OXF_ADDR_2       "127.0.0.1"
@@ -66,9 +66,9 @@
 #endif
 
 #define OXF_PORT_1        35500
-#define OXF_PORT_2        35501
-#define OXF_PORT_3        35502
-#define OXF_PORT_4        35503
+#define OXF_PORT_2        35600
+#define OXF_PORT_3        35700
+#define OXF_PORT_4        35800
 
 #define OXF_SERVER_MAX_CON  64
 #define OXF_CLIENT_MAX_CON  64
@@ -219,6 +219,7 @@ struct oxf_client_con {
 
     // for RoCE
     struct rdma_cm_id *listen_id;
+    struct rdma_cm_id *id;
 };
 
 /* SERVER */
