@@ -66,9 +66,9 @@
 #endif
 
 #define OXF_PORT_1        35500
-#define OXF_PORT_2        35600
-#define OXF_PORT_3        35700
-#define OXF_PORT_4        35800
+#define OXF_PORT_2        35501
+#define OXF_PORT_3        35502
+#define OXF_PORT_4        35503
 
 #define OXF_SERVER_MAX_CON  64
 #define OXF_CLIENT_MAX_CON  64

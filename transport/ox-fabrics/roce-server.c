@@ -2,9 +2,9 @@
  *
  *  - OX NVMe over RoCE (server side)
  *
- * Copyright 2020 IT University of Copenhagen
+ * Copyright 2018 IT University of Copenhagen
  *
- * Written by Niclas Hedam <nhed@itu.dk>
+ * Written by Ivan Luiz Picoli <ivpi@itu.dk>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,81 +28,78 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <netdb.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <pthread.h>
 #include <sched.h>
 #include <errno.h>
-#include <rdma/rdma_cma.h>
-#include <rdma/rdma_verbs.h>
 #include <ox-fabrics.h>
 #include <libox.h>
 
-#include "roce-helper.h"
+#include <rdma/rdma_cma.h>
+#include <rdma/rsocket.h>
+
+#define OXF_RoCE_DEBUG   0
 
 /* Last connection ID that has received a 'connect' command */
 uint16_t pending_conn;
 
-static void oxf_roce_server_unbind (struct oxf_server_con *con)
-{
-    if (con) {
-        if(con->listen_id) rdma_destroy_ep(con->listen_id);
-        con->server->connections[con->cid] = NULL;
-        con->server->n_con--;
-        free (con);
-    }
-}
-
 static struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
                                 uint16_t cid, const char *addr, uint16_t port)
 {
-    struct oxf_server_con *con = malloc (sizeof (struct oxf_server_con));;
-    if(!con) return NULL;
-
-    int ret;
-    struct rdma_addrinfo *res;
+    struct oxf_server_con *con;
+    struct timeval tv;
 
     if (cid > OXF_SERVER_MAX_CON) {
-        log_err ("[ox-fabrics: Invalid connection ID: %d]", cid);
+        log_err ("[ox-fabrics (bind): Invalid connection ID: %d]", cid);
         return NULL;
     }
 
     if (server->connections[cid]) {
-        log_err ("[ox-fabrics: Connection already established: %d]", cid);
+        log_err ("[ox-fabrics (bind): Connection already established: %d]", cid);
         return NULL;
     }
 
-    /* Change port for different connections */
-    port = port + cid;
+    con = ox_malloc (sizeof (struct oxf_server_con), OX_MEM_TCP_SERVER);
+    if (!con)
+	return NULL;
 
     con->cid = cid;
     con->server = server;
     con->running = 0;
+    memset (con->active_cli, 0x0, OXF_SERVER_MAX_CON * sizeof (int));
+
+    if ( (con->sock_fd = rsocket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
+        log_err ("[ox-fabrics (bind): Socket creation failure. %d]", con->sock_fd);
+        ox_free (con, OX_MEM_TCP_SERVER);
+        return NULL;
+    }
+
     con->addr.sin_family = AF_INET;
     inet_aton (addr, (struct in_addr *) &con->addr.sin_addr.s_addr);
     con->addr.sin_port = htons(port);
 
-    char cport[16];
-    snprintf(cport, sizeof(cport), "%d", port);
-
-    ret = rdma_getaddrinfo(addr, cport, hints(1), &res);
-    ret = rdma_create_ep(&con->listen_id, res, NULL, attr());
-    if (ret) {
-        log_err ("[ox-fabrics: RoCE create EP failure.]");
-        perror("RoCE EP creation failture");
-	goto ERR;
-    }
-
-    printf("ID\n");
-
-    ret = rdma_listen(con->listen_id, 0);
-    if (ret) {
-        log_err ("[ox-fabrics: RoCE listen failure.]");
+    if ( rbind(con->sock_fd, (const struct sockaddr *) &con->addr,
+                					sizeof(con->addr)) < 0 )
+    {
+        log_err ("[ox-fabrics (bind): Socket bind failure.]");
         goto ERR;
     }
 
-    printf("Listen\n");
+    /* Set socket timeout */
+    tv.tv_sec = 0;
+    tv.tv_usec = OXF_RCV_TO;
+
+    // if (setsockopt(con->sock_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0){
+    //     log_err ("[ox-fabrics (bind): Socket timeout failure.]");
+    //     goto ERR;
+    // }
+
+    /* Put the socket in listen mode to accepting connections */
+    if (rlisten (con->sock_fd, 16)) {
+        log_err ("[ox-fabrics (bind): Socket listen failure.]");
+        goto ERR;
+    }
 
     server->connections[cid] = con;
     server->n_con++;
@@ -114,101 +111,179 @@ static struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
     return con;
 
 ERR:
-    oxf_roce_server_unbind(con);
+    rshutdown (con->sock_fd, 2);
+    rclose (con->sock_fd);
+    ox_free (con, OX_MEM_TCP_SERVER);
     return NULL;
+}
+
+static void oxf_roce_server_unbind (struct oxf_server_con *con)
+{
+    if (con) {
+        rshutdown (con->sock_fd, 0);
+        rclose (con->sock_fd);
+        con->server->connections[con->cid] = NULL;
+        con->server->n_con--;
+        ox_free (con, OX_MEM_TCP_SERVER);
+    }
+}
+
+static uint16_t oxf_roce_server_process_msg (struct oxf_server_con *con,
+                uint8_t *buffer, uint8_t *broken, uint16_t *brkb,
+                uint16_t conn_id, int msg_bytes)
+{
+    uint16_t offset = 0, fix = 0, msg_sz, brk_bytes = *brkb;
+
+    if (brk_bytes) {
+
+        if (brk_bytes < 3) {
+
+            if (msg_bytes + brk_bytes < 3) {
+                memcpy (&broken[brk_bytes], buffer, msg_bytes);
+                brk_bytes += msg_bytes;
+                return brk_bytes;
+            }
+
+            memcpy (&broken[brk_bytes], buffer, 3 - brk_bytes);
+            offset = fix = 3 - brk_bytes;
+            msg_bytes -= 3 - brk_bytes;
+            brk_bytes = 3;
+            if (!msg_bytes)
+                return brk_bytes;
+        }
+
+        msg_sz = ((struct oxf_capsule_sq *) broken)->size;
+
+        if (brk_bytes + msg_bytes < msg_sz) {
+            memcpy (&broken[brk_bytes], &buffer[offset], msg_bytes);
+            brk_bytes += msg_bytes;
+            return brk_bytes;
+        }
+
+        memcpy (&broken[brk_bytes], &buffer[offset], msg_sz - brk_bytes);
+        con->rcv_fn (msg_sz, (void *) broken,
+                                            (void *) &con->active_cli[conn_id]);
+        offset += msg_sz - brk_bytes;
+        brk_bytes = 0;
+    }
+
+    msg_bytes += fix;
+    while (offset < msg_bytes) {
+        if ( (msg_bytes - offset < 3) ||
+            (msg_bytes - offset <
+                         ((struct oxf_capsule_sq *) &buffer[offset])->size) ) {
+            memcpy (broken, &buffer[offset], msg_bytes - offset);
+            brk_bytes = msg_bytes - offset;
+            offset += msg_bytes - offset;
+            continue;
+        }
+
+        msg_sz = ((struct oxf_capsule_sq *) &buffer[offset])->size;
+        con->rcv_fn (msg_sz, (void *) &buffer[offset],
+                                           (void *) &con->active_cli[conn_id]);
+        offset += msg_sz;
+    }
+
+    return brk_bytes;
 }
 
 static void *oxf_roce_server_con_th (void *arg)
 {
     struct oxf_server_con *con = (struct oxf_server_con *) arg;
+    uint16_t brk_bytes = 0;
+    uint16_t conn_id = pending_conn;
     uint8_t buffer[OXF_MAX_DGRAM + 1];
-    uint8_t ack[2];
-    int n, ret;
+    uint8_t broken[OXF_MAX_DGRAM + 1];
+    int msg_bytes;
 
-    struct rdma_cm_id *id;
-    struct ibv_wc wc;
+    /* Set thread affinity, if enabled */
+#if OX_TH_AFFINITY
+    cpu_set_t cpuset;
+    pthread_t current_thread;
 
-    ack[0] = OXF_ACK_BYTE;
-    while (con->running) {
-        printf("Waiting ..\n");
-        ret = rdma_get_request(con->listen_id, &id);
-        if(ret){
-            log_err ("[ox-fabrics: error in rdma_get_request]");
-            perror("Received connection, but something broke");
-            continue;
-        }
+    CPU_ZERO(&cpuset);
+    CPU_SET(1, &cpuset);
+    CPU_SET(2, &cpuset);
+    CPU_SET(3, &cpuset);
+    CPU_SET(7, &cpuset);
 
-        printf("Receiving\n");
+    current_thread = pthread_self();
+    pthread_setaffinity_np(current_thread, sizeof(cpu_set_t), &cpuset);
 
-        struct ibv_mr *mr = rdma_reg_msgs(id, buffer, OXF_MAX_DGRAM + 1);
-        ret = rdma_post_recv(id, NULL, buffer, OXF_MAX_DGRAM, mr);
-        if(ret){
-            log_err ("[ox-fabrics: error in rdma_post_recv]");
-            continue;
-        }
+    log_info (" [roce: Thread affinity is set for connection %d\n", con->cid);
+#endif /* OX_TH_AFFINITY */
 
-        printf("Accepting\n");
+    pending_conn = 0;
+    log_info ("[ox-fabrics: Connection %d is started -> client %d\n",
+                                            conn_id, con->active_cli[conn_id]);
 
-        ret = rdma_accept(id, NULL);
-        if (ret) {
-            log_err ("[ox-fabrics: error in rdma_accept]");
-            continue;
-        }
+    while (con->active_cli[conn_id] > 0) {
 
-        printf("Will receive\n");
+        msg_bytes = rrecv(con->active_cli[conn_id] - 1,
+                                            buffer, OXF_MAX_DGRAM, MSG_DONTWAIT);
+        buffer[msg_bytes] = '\0';
 
-        while ((ret = rdma_get_recv_comp(id, &wc)) == 0);
-        if (ret < 0) {
-            perror("rdma_get_recv_comp");
-            rdma_disconnect(id);
-            rdma_destroy_ep(id);
-            return NULL;
-        }
-
-        printf("Received\n");
-
-        n = wc.byte_len;
-        buffer[n] = '\0';
-
-        printf("n = %d, b0 = %d, con_byte = %d\n", n, buffer[0], OXF_CON_BYTE);
-
-        if (n < 0)
+        /* Timeout */
+        if (msg_bytes < 0)
             continue;
 
-        if (n == 1 && (buffer[0] == OXF_CON_BYTE) )
-            goto ACK;
+        /* Client disconnected */
+        if (msg_bytes == 0)
+            break;
 
-        con->rcv_fn (n, (void *) buffer, (void *) &id);
-        continue;
+        if (OXF_RoCE_DEBUG)
+            printf ("roce: Received message: %d bytes\n", msg_bytes);
 
-ACK:
-
-        printf("Before ACK\n");
-
-        ret = rdma_post_send(id, NULL, ack, 1, NULL, send_flags(1));
-        if (ret) {
-            perror("rdma_post_send");
-            log_err ("[ox-fabrics: error in rdma_post_send]");
-            rdma_disconnect(id);
-            rdma_destroy_ep(id);
-            return NULL;
-        }
-
-        printf("During ACK\n");
-
-        while ((ret = rdma_get_send_comp(id, &wc)) == 0);
-        if (ret < 0){
-            perror("rdma_get_send_comp");
-            log_err ("[ox-fabrics: Connect ACK hasn't been sent.]");
-            rdma_disconnect(id);
-            rdma_destroy_ep(id);
-            return NULL;
-        }
-
-         printf("After ack\n");
+        brk_bytes = oxf_roce_server_process_msg (con, buffer, broken,
+                                               &brk_bytes, conn_id, msg_bytes);
     }
 
-    log_err ("[ox-fabrics: Connection %d is closed.]", con->cid);
+    rclose (con->active_cli[conn_id] - 1);
+    con->active_cli[conn_id] = 0;
+    log_info ("[ox-fabrics: Connection %d is closed.]", conn_id);
+
+    return NULL;
+}
+
+static void *oxf_roce_server_accept_th (void *arg)
+{
+    struct oxf_server_con *con = (struct oxf_server_con *) arg;
+    struct sockaddr_in client;
+    int client_sock;
+    unsigned int len;
+
+    len = sizeof (struct sockaddr);
+
+    log_info ("[ox-fabrics: Accepting connections -> %s:%d\n", con->haddr.addr,
+                                                               con->haddr.port);
+
+    while (con->running) {
+
+        //accept connection from an incoming client
+        client_sock = raccept(con->sock_fd, (struct sockaddr *) &client, &len);
+
+        if (client_sock < 0)
+            continue;
+
+        if (con->active_cli[pending_conn]) {
+            log_info ("[ox-fabrics: Client %d is taking connection %d.]",
+                                                    client_sock, pending_conn);
+            con->active_cli[pending_conn] = 0;
+            pthread_join (con->cli_tid[pending_conn], NULL);
+        }
+
+        con->active_cli[pending_conn] = client_sock + 1;
+
+        if (pthread_create (&con->cli_tid[pending_conn], NULL,
+                                        oxf_roce_server_con_th, (void *) arg)) {
+            pending_conn = 0;
+            log_err ("[ox-fabrics: Client thread not started: %d]",
+                                                                 pending_conn);
+        }
+
+        while (pending_conn)
+            usleep (1000);
+    }
 
     return NULL;
 }
@@ -216,18 +291,15 @@ ACK:
 static int oxf_roce_server_reply(struct oxf_server_con *con, const void *buf,
                                                  uint32_t size, void *recv_cli)
 {
-    struct ibv_wc wc;
-    struct rdma_cm_id *id = (struct rdma_cm_id *) recv_cli;
+    int *client = (int *) recv_cli;
+    int ret;
 
-    int ret = rdma_post_send(id, NULL, &buf, size, NULL, send_flags(size));
-    if (ret) goto SEND_ERROR;
+    ret = rsend (*client - 1, buf, size, 0);
 
-    while ((ret = rdma_get_send_comp(id, &wc)) == 0);
-    if (ret < 0) goto SEND_ERROR;
-    else ret = 0;
+    if (OXF_RoCE_DEBUG)
+        printf ("roce: Message replied: %d bytes\n", size);
 
-SEND_ERROR:
-    if (ret) {
+    if (ret != size) {
         log_err ("[ox-fabrics: Completion reply hasn't been sent. %d]", ret);
         return -1;
     }
@@ -237,10 +309,13 @@ SEND_ERROR:
 
 static int oxf_roce_server_con_start (struct oxf_server_con *con, oxf_rcv_fn *fn)
 {
+    if (con->running)
+        return 0;
+
     con->running = 1;
     con->rcv_fn = fn;
 
-    if (pthread_create (&con->tid, NULL, oxf_roce_server_con_th, con)) {
+    if (pthread_create (&con->tid, NULL, oxf_roce_server_accept_th, con)) {
 	log_err ("[ox-fabrics: Connection not started.]");
 	con->running = 0;
 	return -1;
@@ -251,16 +326,30 @@ static int oxf_roce_server_con_start (struct oxf_server_con *con, oxf_rcv_fn *fn
 
 static void oxf_roce_server_con_stop (struct oxf_server_con *con)
 {
+    uint32_t cli_id;
+
     if (con && con->running)
 	con->running = 0;
     else
         return;
 
+    for (cli_id = 0; cli_id < OXF_SERVER_MAX_CON; cli_id++) {
+        if (con->active_cli[cli_id]) {
+            con->active_cli[cli_id] = 0;
+            pthread_join (con->cli_tid[cli_id], NULL);
+        }
+    }
     pthread_join (con->tid, NULL);
 }
+
 void oxf_roce_server_exit (struct oxf_server *server)
 {
-    free (server);
+    uint32_t con_i;
+
+    for (con_i = 0; con_i < OXF_SERVER_MAX_CON; con_i++)
+        oxf_roce_server_con_stop (server->connections[con_i]);
+
+    ox_free (server, OX_MEM_TCP_SERVER);
 }
 
 struct oxf_server_ops oxf_roce_srv_ops = {
@@ -271,14 +360,19 @@ struct oxf_server_ops oxf_roce_srv_ops = {
     .reply   = oxf_roce_server_reply
 };
 
-struct oxf_server *oxf_roce_server_init (void){
+struct oxf_server *oxf_roce_server_init (void)
+{
     struct oxf_server *server;
 
-    server = calloc (1, sizeof (struct oxf_server));
+    if (!ox_mem_create_type ("RoCE_SERVER", OX_MEM_TCP_SERVER))
+        return NULL;
+
+    server = ox_calloc (1, sizeof (struct oxf_server), OX_MEM_TCP_SERVER);
     if (!server)
 	return NULL;
 
     server->ops = &oxf_roce_srv_ops;
+    pending_conn = 0;
 
     log_info ("[ox-fabrics: Protocol -> RoCE\n");
 
