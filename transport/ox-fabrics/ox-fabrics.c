@@ -29,6 +29,9 @@
 #include <nvme.h>
 #include <ox-fabrics.h>
 
+#include <rdma/rdma_cma.h>
+#include <rdma/rsocket.h>
+
 #define OXF_MAX_ENT 4096
 
 struct oxf_tgt_reply {
@@ -292,12 +295,9 @@ static void oxf_fabrics_rcv_fn (uint32_t size, void *arg, void *recv_cli)
                 log_err ("[ox-fabrics: Capsule not processed.]\n");
 
             break;
-        case OXF_RDMA_BYTE:
-            // RDMA not implemented
-            break;
         default:
             log_err ("[ox-fabrics: Unknown capsule: %x.]\n", capsule->type);
-            break;
+            return;
     }
 }
 

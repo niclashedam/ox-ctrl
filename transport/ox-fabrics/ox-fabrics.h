@@ -54,10 +54,10 @@
 #define OXF_FULL_IFACES 0
 
 #if OXF_REMOTE
-#define OXF_ADDR_1       "10.2.1.2"
-#define OXF_ADDR_2       "10.2.1.2"
-#define OXF_ADDR_3       "10.2.1.2"
-#define OXF_ADDR_4       "10.2.1.2"
+#define OXF_ADDR_1       "10.2.1.1"
+#define OXF_ADDR_2       "10.2.1.1"
+#define OXF_ADDR_3       "10.2.1.1"
+#define OXF_ADDR_4       "10.2.1.1"
 #else
 #define OXF_ADDR_1       "127.0.0.1"
 #define OXF_ADDR_2       "127.0.0.1"
@@ -84,7 +84,6 @@ enum oxf_capsule_types {
     OXF_DIS_BYTE    = 0x2c, /* Disconnect command */
     OXF_CMD_BYTE    = 0x3c, /* Submission queue entry */
     OXF_CQE_BYTE    = 0x4c, /* Completion queue entry */
-    OXF_RDMA_BYTE   = 0x5c  /* RDMA packet */
 };
 
 #define OXF_CAPSULE_SZ      65504
@@ -206,6 +205,9 @@ struct oxf_server_con {
 
     // for RoCE
     struct rdma_cm_id *listen_id;
+    uint8_t buffer[OXF_MAX_DGRAM + 1];
+    off_t remote_offset;
+    off_t local_offset;
 };
 
 struct oxf_client_con {
@@ -220,6 +222,9 @@ struct oxf_client_con {
     // for RoCE
     struct rdma_cm_id *listen_id;
     struct rdma_cm_id *id;
+    uint8_t buffer[OXF_MAX_DGRAM + 1];
+    off_t remote_offset;
+    off_t local_offset;
 };
 
 /* SERVER */
