@@ -297,7 +297,7 @@ static void oxf_fabrics_rcv_fn (uint32_t size, void *arg, void *recv_cli)
             break;
         default:
             log_err ("[ox-fabrics: Unknown capsule: %x.]\n", capsule->type);
-            return;
+            break;
     }
 }
 

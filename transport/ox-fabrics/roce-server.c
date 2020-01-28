@@ -1,3 +1,4 @@
+
 /* OX: Open-Channel NVM Express SSD Controller
  *
  *  - OX NVMe over RoCE (server side)
@@ -144,14 +145,39 @@ static void *oxf_roce_server_con_th (void *arg)
     log_info ("[ox-fabrics: Connection %d is started -> client %d\n",
                                             conn_id, con->active_cli[conn_id]);
 
-    riomap(con->active_cli[conn_id] - 1, con->buffer, OXF_MAX_DGRAM + 1,
-		PROT_WRITE, 0,  -1);
+    con->buffer = aligned_alloc(4096, OXF_MAX_DGRAM + 1);
+    con->local_offset = riomap(con->active_cli[conn_id] - 1, con->buffer, OXF_MAX_DGRAM + 1, PROT_WRITE, 0, -1);
+    if(con->local_offset == -1){
+        perror("Failed to register RIO buffer");
+        return NULL;
+    }
+
+    int ret = rrecv(con->active_cli[conn_id] - 1, &con->remote_offset, sizeof(con->remote_offset), MSG_WAITALL);
+    if (ret != sizeof(con->remote_offset)){
+        printf ("[ox-fabrics: Failed to receive RIO memory region.]\n");
+        perror("RIO receive error");
+        return NULL;
+    }
+
+    ret = rsend(con->active_cli[conn_id] - 1, &con->local_offset, sizeof(con->local_offset), 0);
+    if (ret != sizeof(con->local_offset)){
+        printf ("[ox-fabrics: Failed to send RIO memory region.]\n");
+        perror("RIO send error");
+        return NULL;
+    }
+
+    log_info("[ox-fabrics: Local RIO offset is %ld]", con->local_offset);
+    log_info("[ox-fabrics: Remote RIO offset is %ld]", con->remote_offset);
+
+    printf("[ox-fabrics: Local RIO offset is %ld]\n", con->local_offset);
+    printf("[ox-fabrics: Remote RIO offset is %ld]\n", con->remote_offset);
 
     while (con->active_cli[conn_id] > 0) {
 
         rrecv(con->active_cli[conn_id] - 1,
                                             msg_bytes, sizeof(msg_bytes), MSG_DONTWAIT);
-        con->buffer[*msg_bytes] = '\0';
+
+        memset(con->buffer + *msg_bytes, '\0', sizeof('\0'));
 
         /* Timeout */
         if (msg_bytes < 0)
@@ -200,28 +226,6 @@ static void *oxf_roce_server_accept_th (void *arg)
 
         con->active_cli[pending_conn] = client_sock + 1;
 
-        con->local_offset = riomap(con->sock_fd, con->buffer, OXF_MAX_DGRAM + 1, PROT_WRITE, 0,  0);
-
-        int ret = rrecv(client_sock, &con->remote_offset, sizeof(con->remote_offset), MSG_WAITALL);
-        if (ret != sizeof(con->remote_offset)){
-            printf ("[ox-fabrics: Failed to receive RIO memory region.]\n");
-            perror("RIO receive error");
-            return NULL;
-        }
-
-        ret = rsend(client_sock, &con->local_offset, sizeof(con->local_offset), 0);
-        if (ret != sizeof(con->local_offset)){
-            printf ("[ox-fabrics: Failed to send RIO memory region.]\n");
-            perror("RIO send error");
-            return NULL;
-        }
-
-	log_info("[ox-fabrics: Local RIO offset is %ld]", con->local_offset);
-        log_info("[ox-fabrics: Remote RIO offset is %ld]", con->remote_offset);
-
-        printf("[ox-fabrics: Local RIO offset is %ld]\n", con->local_offset);
-        printf("[ox-fabrics: Remote RIO offset is %ld]\n", con->remote_offset);
-
         if (pthread_create (&con->cli_tid[pending_conn], NULL,
                                         oxf_roce_server_con_th, (void *) arg)) {
             pending_conn = 0;
@@ -242,7 +246,7 @@ static int oxf_roce_server_reply(struct oxf_server_con *con, const void *buf,
     int *client = (int *) recv_cli;
     int ret;
 
-    riowrite(*client - 1, buf, size, 0, con->remote_offset);
+    riowrite(*client - 1, buf, size, con->remote_offset, MSG_WAITALL);
     ret = rsend (*client - 1, &size, sizeof(size), 0);
 
     if (ret != size) {

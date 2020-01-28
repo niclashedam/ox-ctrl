@@ -91,7 +91,13 @@ static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client
         goto NOT_CONNECTED;
     }
 
+    con->buffer = aligned_alloc(4096, OXF_MAX_DGRAM + 1);
     con->local_offset = riomap(con->sock_fd, con->buffer, OXF_MAX_DGRAM + 1, PROT_WRITE, 0,  -1);
+    if(con->local_offset == -1){
+        perror("Failed to register RIO buffer");
+        return NULL;
+    }
+
     int ret = rsend(con->sock_fd, &con->local_offset, sizeof(con->local_offset), 0);
     if (ret != sizeof(con->local_offset)){
         printf ("[ox-fabrics: Failed to send RIO memory region.]\n");
@@ -136,7 +142,7 @@ static int oxf_roce_client_send (struct oxf_client_con *con, uint32_t size,
 {
     uint32_t ret;
 
-    riowrite(con->sock_fd, buf, size, 0, con->remote_offset);
+    riowrite(con->sock_fd, buf, size, con->remote_offset, MSG_WAITALL);
     ret = rsend(con->sock_fd, &size, sizeof(size), 0);
     if (ret != size)
         return -1;
