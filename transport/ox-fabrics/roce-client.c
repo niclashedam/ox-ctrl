@@ -38,14 +38,18 @@ static void *oxf_roce_client_recv (void *arg)
 {
     uint32_t *msg_bytes = calloc(1, sizeof(uint32_t));
     struct oxf_client_con *con = (struct oxf_client_con *) arg;
+    int ret = 0;
 
     while (con->running) {
-        rrecv(con->sock_fd, msg_bytes, sizeof(msg_bytes), MSG_DONTWAIT);
+        ret = rrecv(con->sock_fd, msg_bytes, sizeof(msg_bytes), MSG_DONTWAIT);
+        if (ret <= 0)
+	    continue;
 
         if (msg_bytes <= 0)
             continue;
 
         con->recv_fn (*msg_bytes, (void *) con->buffer);
+	*msg_bytes = 0;
     }
 
     return NULL;
@@ -80,6 +84,9 @@ static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client
         free (con);
         return NULL;
     }
+
+    int val = 8;
+    rsetsockopt(con->sock_fd, SOL_RDMA, RDMA_IOMAPSIZE, (void *) &val, sizeof val);
 
     len = sizeof (struct sockaddr);
     con->addr.sin_family = AF_INET;
@@ -142,10 +149,17 @@ static int oxf_roce_client_send (struct oxf_client_con *con, uint32_t size,
 {
     uint32_t ret;
 
-    riowrite(con->sock_fd, buf, size, con->remote_offset, MSG_WAITALL);
-    ret = rsend(con->sock_fd, &size, sizeof(size), 0);
-    if (ret != size)
+    ret = riowrite(con->sock_fd, buf, size, con->remote_offset, 0);
+    if(ret != size){
+        perror("RIO Write failed");
         return -1;
+    }
+
+    ret = rsend(con->sock_fd, &size, sizeof(size), 0);
+    if (ret != sizeof(size)){
+        perror("RIO Notify failed");
+        return -1;
+    }
 
     return 0;
 }

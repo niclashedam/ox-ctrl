@@ -1,4 +1,3 @@
-
 /* OX: Open-Channel NVM Express SSD Controller
  *
  *  - OX NVMe over RoCE (server side)
@@ -77,6 +76,9 @@ static struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
     con->addr.sin_family = AF_INET;
     inet_aton (addr, (struct in_addr *) &con->addr.sin_addr.s_addr);
     con->addr.sin_port = htons(port);
+
+    int val = 8;
+    rsetsockopt(con->sock_fd, SOL_RDMA, RDMA_IOMAPSIZE, (void *) &val, sizeof val);
 
     if ( rbind(con->sock_fd, (const struct sockaddr *) &con->addr,
                 					sizeof(con->addr)) < 0 )
@@ -174,8 +176,11 @@ static void *oxf_roce_server_con_th (void *arg)
 
     while (con->active_cli[conn_id] > 0) {
 
-        rrecv(con->active_cli[conn_id] - 1,
+        ret = rrecv(con->active_cli[conn_id] - 1,
                                             msg_bytes, sizeof(msg_bytes), MSG_DONTWAIT);
+        if (ret <= 0)
+            continue;
+
 
         memset(con->buffer + *msg_bytes, '\0', sizeof('\0'));
 
@@ -188,6 +193,7 @@ static void *oxf_roce_server_con_th (void *arg)
             break;
 
         con->rcv_fn (*msg_bytes, (void *) con->buffer, (void *) (void *) &con->active_cli[conn_id]);
+	*msg_bytes = 0;
     }
 
     rclose (con->active_cli[conn_id] - 1);
@@ -246,11 +252,20 @@ static int oxf_roce_server_reply(struct oxf_server_con *con, const void *buf,
     int *client = (int *) recv_cli;
     int ret;
 
-    riowrite(*client - 1, buf, size, con->remote_offset, MSG_WAITALL);
-    ret = rsend (*client - 1, &size, sizeof(size), 0);
+    if(con == NULL){
+	printf("Foo");
+    }
 
-    if (ret != size) {
+    ret = riowrite(*client - 1, buf, size, con->remote_offset, 0);
+    if(ret != size){
+        perror("RIO Write failed");
+        return -1;
+    }
+
+    ret = rsend (*client - 1, &size, sizeof(size), 0);
+    if (ret != sizeof(size)) {
         log_err ("[ox-fabrics: Completion reply hasn't been sent. %d]", ret);
+        perror("RIO Notify failed");
         return -1;
     }
 

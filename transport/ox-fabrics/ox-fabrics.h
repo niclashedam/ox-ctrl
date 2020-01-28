@@ -51,7 +51,7 @@
 #define OXF_PROTOCOL    OXF_ROCE
 
 #define OXF_REMOTE      1
-#define OXF_FULL_IFACES 0
+#define OXF_FULL_IFACES 1
 
 #if OXF_REMOTE
 #define OXF_ADDR_1       "10.2.1.1"
