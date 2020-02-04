@@ -77,8 +77,8 @@ static struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
     inet_aton (addr, (struct in_addr *) &con->addr.sin_addr.s_addr);
     con->addr.sin_port = htons(port);
 
-    int val = 8;
-    rsetsockopt(con->sock_fd, SOL_RDMA, RDMA_IOMAPSIZE, (void *) &val, sizeof val);
+    int RIOs = 1;
+    rsetsockopt(con->sock_fd, SOL_RDMA, RDMA_IOMAPSIZE, (void *) &RIOs, sizeof RIOs);
 
     if ( rbind(con->sock_fd, (const struct sockaddr *) &con->addr,
                 					sizeof(con->addr)) < 0 )
@@ -148,6 +148,11 @@ static void *oxf_roce_server_con_th (void *arg)
                                             conn_id, con->active_cli[conn_id]);
 
     con->buffer = aligned_alloc(4096, OXF_MAX_DGRAM + 1);
+    if(con->buffer == NULL){
+        perror("Failed to allocate buffer");
+        return NULL;
+    }
+
     con->local_offset = riomap(con->active_cli[conn_id] - 1, con->buffer, OXF_MAX_DGRAM + 1, PROT_WRITE, 0, -1);
     if(con->local_offset == -1){
         perror("Failed to register RIO buffer");
@@ -177,7 +182,7 @@ static void *oxf_roce_server_con_th (void *arg)
     while (con->active_cli[conn_id] > 0) {
 
         ret = rrecv(con->active_cli[conn_id] - 1,
-                                            &msg_bytes, sizeof(msg_bytes), MSG_DONTWAIT);
+                                            &msg_bytes, sizeof(msg_bytes), MSG_WAITALL);
         if (ret <= 0)
             continue;
 
@@ -191,7 +196,7 @@ static void *oxf_roce_server_con_th (void *arg)
         if (msg_bytes == 0)
             break;
 
-        con->rcv_fn (msg_bytes, (void *) con->buffer, (void *) (void *) &con->active_cli[conn_id]);
+        con->rcv_fn (msg_bytes, (void *) con->buffer, (void *) &con->active_cli[conn_id]);
 	msg_bytes = 0;
     }
 
@@ -252,7 +257,7 @@ static int oxf_roce_server_reply(struct oxf_server_con *con, const void *buf,
     int ret;
 
     if(con == NULL){
-	printf("Foo");
+        printf("Foo");
     }
 
     ret = riowrite(*client - 1, buf, size, con->remote_offset, 0);

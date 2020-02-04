@@ -41,7 +41,7 @@ static void *oxf_roce_client_recv (void *arg)
     int ret = 0;
 
     while (con->running) {
-        ret = rrecv(con->sock_fd, &msg_bytes, sizeof(msg_bytes), MSG_DONTWAIT);
+        ret = rrecv(con->sock_fd, &msg_bytes, sizeof(msg_bytes), MSG_WAITALL);
         if (ret <= 0)
 	    continue;
 
@@ -85,8 +85,8 @@ static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client
         return NULL;
     }
 
-    int val = 8;
-    rsetsockopt(con->sock_fd, SOL_RDMA, RDMA_IOMAPSIZE, (void *) &val, sizeof val);
+    int RIOs = 1;
+    rsetsockopt(con->sock_fd, SOL_RDMA, RDMA_IOMAPSIZE, (void *) &RIOs, sizeof RIOs);
 
     len = sizeof (struct sockaddr);
     con->addr.sin_family = AF_INET;
@@ -99,6 +99,11 @@ static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client
     }
 
     con->buffer = aligned_alloc(4096, OXF_MAX_DGRAM + 1);
+    if(con->buffer == NULL){
+        perror("Failed to allocate buffer");
+        return NULL;
+    }
+
     con->local_offset = riomap(con->sock_fd, con->buffer, OXF_MAX_DGRAM + 1, PROT_WRITE, 0,  -1);
     if(con->local_offset == -1){
         perror("Failed to register RIO buffer");

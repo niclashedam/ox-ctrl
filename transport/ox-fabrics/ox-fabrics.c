@@ -36,7 +36,7 @@
 
 struct oxf_tgt_reply {
     uint8_t                     type;
-    uint8_t                     cli[32];
+    uint8_t                     cli[1024];
     uint8_t                     is_write;
     uint32_t                    data_sz;
     struct oxf_server_con      *con;
@@ -263,7 +263,7 @@ static void oxf_fabrics_rcv_fn (uint32_t size, void *arg, void *recv_cli)
                         memcpy (reply->cli, recv_cli, sizeof (int));
                         break;
                 }
-                reply->con = fabrics.server->connections[sq_id];
+                reply->con = fabrics.server->connections[sq_id % fabrics.server->n_con];
 
                 /* Copy from socket buffer to fabrics cache */
                 memcpy (&reply->capsule, &capsule->sqc,
