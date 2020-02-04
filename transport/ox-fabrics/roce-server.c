@@ -124,7 +124,7 @@ static void *oxf_roce_server_con_th (void *arg)
 {
     struct oxf_server_con *con = (struct oxf_server_con *) arg;
     uint16_t conn_id = pending_conn;
-    uint32_t *msg_bytes = calloc(1, sizeof(uint32_t));
+    uint32_t msg_bytes = 0;
 
     /* Set thread affinity, if enabled */
 #if OX_TH_AFFINITY
@@ -177,12 +177,11 @@ static void *oxf_roce_server_con_th (void *arg)
     while (con->active_cli[conn_id] > 0) {
 
         ret = rrecv(con->active_cli[conn_id] - 1,
-                                            msg_bytes, sizeof(msg_bytes), MSG_DONTWAIT);
+                                            &msg_bytes, sizeof(msg_bytes), MSG_DONTWAIT);
         if (ret <= 0)
             continue;
 
-
-        memset(con->buffer + *msg_bytes, '\0', sizeof('\0'));
+        con->buffer[msg_bytes] = '\0';
 
         /* Timeout */
         if (msg_bytes < 0)
@@ -192,8 +191,8 @@ static void *oxf_roce_server_con_th (void *arg)
         if (msg_bytes == 0)
             break;
 
-        con->rcv_fn (*msg_bytes, (void *) con->buffer, (void *) (void *) &con->active_cli[conn_id]);
-	*msg_bytes = 0;
+        con->rcv_fn (msg_bytes, (void *) con->buffer, (void *) (void *) &con->active_cli[conn_id]);
+	msg_bytes = 0;
     }
 
     rclose (con->active_cli[conn_id] - 1);

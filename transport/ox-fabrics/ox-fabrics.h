@@ -207,7 +207,7 @@ struct oxf_server_con {
     struct rdma_cm_id *listen_id;
     off_t remote_offset;
     off_t local_offset;
-    void *buffer;
+    uint8_t *buffer;
 };
 
 struct oxf_client_con {
@@ -224,7 +224,7 @@ struct oxf_client_con {
     struct rdma_cm_id *id;
     off_t remote_offset;
     off_t local_offset;
-    void *buffer;
+    uint8_t *buffer;
 };
 
 /* SERVER */

@@ -6,7 +6,7 @@
 #include <ox-fabrics.h>
 
 #define NUM_CMD     100000
-#define NUM_QUEUES  4 * (OXF_FULL_IFACES + 1)
+#define NUM_QUEUES  4
 
 volatile static uint32_t returned;
 volatile static uint32_t completed;

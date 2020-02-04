@@ -36,20 +36,20 @@
 
 static void *oxf_roce_client_recv (void *arg)
 {
-    uint32_t *msg_bytes = calloc(1, sizeof(uint32_t));
+    uint32_t msg_bytes = 0;
     struct oxf_client_con *con = (struct oxf_client_con *) arg;
     int ret = 0;
 
     while (con->running) {
-        ret = rrecv(con->sock_fd, msg_bytes, sizeof(msg_bytes), MSG_DONTWAIT);
+        ret = rrecv(con->sock_fd, &msg_bytes, sizeof(msg_bytes), MSG_DONTWAIT);
         if (ret <= 0)
 	    continue;
 
         if (msg_bytes <= 0)
             continue;
 
-        con->recv_fn (*msg_bytes, (void *) con->buffer);
-	*msg_bytes = 0;
+        con->recv_fn (msg_bytes, (void *) con->buffer);
+	msg_bytes = 0;
     }
 
     return NULL;
