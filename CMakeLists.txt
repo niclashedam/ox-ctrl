@@ -7,7 +7,7 @@ add_definitions (-DCONFIG_PATCHLEVEL=6)
 add_definitions (-DCONFIG_SUBLEVEL=0)
 add_definitions (-DCONFIG_LABEL="The Ultimate Dragon")
 
-set(CMAKE_C_FLAGS "-fPIC -g -pthread -fopenmp -Wall")
+set(CMAKE_C_FLAGS "-fPIC -pthread -fopenmp -Wall")
 
 include_directories(${PROJECT_SOURCE_DIR}/include
                     ${PROJECT_SOURCE_DIR}/host

@@ -250,7 +250,7 @@ static void oxf_fabrics_rcv_fn (uint32_t size, void *arg, void *recv_cli)
                 TAILQ_INSERT_TAIL(&q_reply->reply_uh, reply, entry);
                 pthread_spin_unlock (&q_reply->reply_spin);
 
-                /* Client structure must be maximum of 32 bytes */
+                /* Client structure must be maximum of 1024 bytes */
                 switch (reply->type) {
                     case OXF_UDP:
                         memcpy (reply->cli, recv_cli, sizeof (struct sockaddr));
@@ -295,6 +295,12 @@ static void oxf_fabrics_rcv_fn (uint32_t size, void *arg, void *recv_cli)
                 log_err ("[ox-fabrics: Capsule not processed.]\n");
 
             break;
+        case OXF_RDMA_PUSH_BYTE:
+		// if we receive a PUSH byte we should riowrite to the address
+		break;
+	case OXF_RDMA_PULL_BYTE:
+		// if we receive a PULL byte it means that the other instance wants us to send a PUSH byte
+		break;
         default:
             log_err ("[ox-fabrics: Unknown capsule: %x.]\n", capsule->type);
             break;

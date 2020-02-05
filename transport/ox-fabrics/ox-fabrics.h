@@ -33,8 +33,7 @@
 #include <pthread.h>
 #include <nvme.h>
 #include <nvmef.h>
-#include <rdma/rdma_cma.h>
-#include <rdma/rdma_verbs.h>
+#include <rdma/rsocket.h>
 
 #define OXF_DEBUG       0
 
@@ -51,13 +50,13 @@
 #define OXF_PROTOCOL    OXF_ROCE
 
 #define OXF_REMOTE      1
-#define OXF_FULL_IFACES 1
+#define OXF_FULL_IFACES 0
 
 #if OXF_REMOTE
-#define OXF_ADDR_1       "10.2.1.1"
-#define OXF_ADDR_2       "10.2.1.1"
-#define OXF_ADDR_3       "10.2.1.1"
-#define OXF_ADDR_4       "10.2.1.1"
+#define OXF_ADDR_1       "10.2.1.2"
+#define OXF_ADDR_2       "10.2.1.2"
+#define OXF_ADDR_3       "10.2.1.2"
+#define OXF_ADDR_4       "10.2.1.2"
 #else
 #define OXF_ADDR_1       "127.0.0.1"
 #define OXF_ADDR_2       "127.0.0.1"
@@ -79,11 +78,13 @@
 #define OXF_BLK_SIZE        4096
 
 enum oxf_capsule_types {
-    OXF_ACK_BYTE    = 0x0c, /* Acknowledgement */
-    OXF_CON_BYTE    = 0x1c, /* Connect command */
-    OXF_DIS_BYTE    = 0x2c, /* Disconnect command */
-    OXF_CMD_BYTE    = 0x3c, /* Submission queue entry */
-    OXF_CQE_BYTE    = 0x4c, /* Completion queue entry */
+    OXF_ACK_BYTE    	= 0x0c, /* Acknowledgement */
+    OXF_CON_BYTE    	= 0x1c, /* Connect command */
+    OXF_DIS_BYTE    	= 0x2c, /* Disconnect command */
+    OXF_CMD_BYTE    	= 0x3c, /* Submission queue entry */
+    OXF_CQE_BYTE    	= 0x4c, /* Completion queue entry */
+    OXF_RDMA_PULL_BYTE  = 0x5c, /* Request to pull data from sender */
+    OXF_RDMA_PUSH_BYTE  = 0x6c, /* Request to push data to sender */
 };
 
 #define OXF_CAPSULE_SZ      65504
@@ -202,12 +203,6 @@ struct oxf_server_con {
         int                  active_cli[OXF_SERVER_MAX_CON];
         pthread_t            cli_tid[OXF_SERVER_MAX_CON];
 	int                  sock_fd;
-
-    // for RoCE
-    struct rdma_cm_id *listen_id;
-    off_t remote_offset;
-    off_t local_offset;
-    uint8_t *buffer;
 };
 
 struct oxf_client_con {
@@ -218,13 +213,6 @@ struct oxf_client_con {
         pthread_t            recv_th;
         oxf_rcv_reply_fn    *recv_fn;
         uint8_t              running;
-
-    // for RoCE
-    struct rdma_cm_id *listen_id;
-    struct rdma_cm_id *id;
-    off_t remote_offset;
-    off_t local_offset;
-    uint8_t *buffer;
 };
 
 /* SERVER */

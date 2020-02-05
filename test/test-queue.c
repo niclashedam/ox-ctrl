@@ -5,7 +5,7 @@
 #include <nvme.h>
 #include <ox-fabrics.h>
 
-#define NUM_CMD     100000
+#define NUM_CMD     1000000
 #define NUM_QUEUES  4
 
 volatile static uint32_t returned;
@@ -55,7 +55,7 @@ int main (void)
     struct nvme_sgl_desc *desc;
     uint8_t buffer[OXF_SQC_MAX_DATA];
     uint8_t  *buf_ptr[1] = {&buffer[0]};
-    uint32_t buf_sz[1] = {4096 * 15};
+    uint32_t buf_sz[1] = { 4096 * 15 };
 
     for (cmd_i = 0; cmd_i < NUM_CMD; cmd_i++) {
         ncmd[cmd_i] = calloc (1, sizeof (struct nvme_cmd));

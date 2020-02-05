@@ -1,6 +1,6 @@
 /* OX: Open-Channel NVM Express SSD Controller
  *
- *  - OX NVMe over RoCE (client side)
+ *  - OX NVMe over roce (client side)
  *
  * Copyright 2018 IT University of Copenhagen
  *
@@ -31,25 +31,81 @@
 #include <pthread.h>
 #include <ox-fabrics.h>
 
-#include <rdma/rdma_cma.h>
-#include <rdma/rsocket.h>
+#include <rdma/rsocket.h> 
+
+static uint16_t oxf_roce_client_process_msg (struct oxf_client_con *con,
+                uint8_t *buffer, uint8_t *broken, uint16_t *brkb,
+                int msg_bytes)
+{
+    uint16_t offset = 0, fix = 0, msg_sz, brk_bytes = *brkb;
+
+    if (brk_bytes) {
+
+        if (brk_bytes < 3) {
+
+            if (msg_bytes + brk_bytes < 3) {
+                memcpy (&broken[brk_bytes], buffer, msg_bytes);
+                brk_bytes += msg_bytes;
+                return brk_bytes;
+            }
+
+            memcpy (&broken[brk_bytes], buffer, 3 - brk_bytes);
+            offset = fix = 3 - brk_bytes;
+            msg_bytes -= 3 - brk_bytes;
+            brk_bytes = 3;
+            if (!msg_bytes)
+                return brk_bytes;
+        }
+
+        msg_sz = ((struct oxf_capsule_sq *) broken)->size;
+
+        if (brk_bytes + msg_bytes < msg_sz) {
+            memcpy (&broken[brk_bytes], &buffer[offset], msg_bytes);
+            brk_bytes += msg_bytes;
+            return brk_bytes;
+        }
+
+        memcpy (&broken[brk_bytes], &buffer[offset], msg_sz - brk_bytes);
+        con->recv_fn (msg_sz, (void *) broken);
+        offset += msg_sz - brk_bytes;
+        brk_bytes = 0;
+    }
+
+    msg_bytes += fix;
+    while (offset < msg_bytes) {
+        if ( (msg_bytes - offset < 3) ||
+            (msg_bytes - offset <
+                         ((struct oxf_capsule_sq *) &buffer[offset])->size) ) {
+            memcpy (broken, &buffer[offset], msg_bytes - offset);
+            brk_bytes = msg_bytes - offset;
+            offset += msg_bytes - offset;
+            continue;
+        }
+
+        msg_sz = ((struct oxf_capsule_sq *) &buffer[offset])->size;
+        con->recv_fn (msg_sz, (void *) &buffer[offset]);
+        offset += msg_sz;
+    }
+
+    return brk_bytes;
+}
 
 static void *oxf_roce_client_recv (void *arg)
 {
-    uint32_t msg_bytes = 0;
+    ssize_t msg_bytes;
+    uint16_t brk_bytes = 0;
+    uint8_t buffer[OXF_MAX_DGRAM + 1];
+    uint8_t broken[OXF_MAX_DGRAM + 1];
     struct oxf_client_con *con = (struct oxf_client_con *) arg;
-    int ret = 0;
 
     while (con->running) {
-        ret = rrecv(con->sock_fd, &msg_bytes, sizeof(msg_bytes), MSG_WAITALL);
-        if (ret <= 0)
-	    continue;
+        msg_bytes = rrecv(con->sock_fd , buffer, OXF_MAX_DGRAM, MSG_DONTWAIT);
 
         if (msg_bytes <= 0)
             continue;
 
-        con->recv_fn (msg_bytes, (void *) con->buffer);
-	msg_bytes = 0;
+        brk_bytes = oxf_roce_client_process_msg (con, buffer, broken,
+                                                        &brk_bytes, msg_bytes);
     }
 
     return NULL;
@@ -85,8 +141,9 @@ static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client
         return NULL;
     }
 
-    int RIOs = 1;
-    rsetsockopt(con->sock_fd, SOL_RDMA, RDMA_IOMAPSIZE, (void *) &RIOs, sizeof RIOs);
+    int buffer_size = OXF_MAX_DGRAM * OXF_QUEUE_SIZE;
+    rsetsockopt(con->sock_fd, SOL_SOCKET, SO_SNDBUF, (void *) &buffer_size, sizeof buffer_size);
+    rsetsockopt(con->sock_fd, SOL_SOCKET, SO_RCVBUF, (void *) &buffer_size, sizeof buffer_size);
 
     len = sizeof (struct sockaddr);
     con->addr.sin_family = AF_INET;
@@ -97,38 +154,6 @@ static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client
         printf ("[ox-fabrics: Socket connection failure.]\n");
         goto NOT_CONNECTED;
     }
-
-    con->buffer = aligned_alloc(4096, OXF_MAX_DGRAM + 1);
-    if(con->buffer == NULL){
-        perror("Failed to allocate buffer");
-        return NULL;
-    }
-
-    con->local_offset = riomap(con->sock_fd, con->buffer, OXF_MAX_DGRAM + 1, PROT_WRITE, 0,  -1);
-    if(con->local_offset == -1){
-        perror("Failed to register RIO buffer");
-        return NULL;
-    }
-
-    int ret = rsend(con->sock_fd, &con->local_offset, sizeof(con->local_offset), 0);
-    if (ret != sizeof(con->local_offset)){
-        printf ("[ox-fabrics: Failed to send RIO memory region.]\n");
-        perror("RIO send error");
-        goto NOT_CONNECTED;
-    }
-
-    ret = rrecv(con->sock_fd, &con->remote_offset , sizeof(con->remote_offset), MSG_WAITALL);
-    if (ret != sizeof(con->remote_offset)){
-        printf ("[ox-fabrics: Failed to receive RIO memory region.]\n");
-        perror("RIO receive error");
-        goto NOT_CONNECTED;
-    }
-
-    log_info("[ox-fabrics: Local RIO offset is %ld]", con->local_offset);
-    log_info("[ox-fabrics: Remote RIO offset is %ld]", con->remote_offset);
-
-    printf("[ox-fabrics: Local RIO offset is %ld]\n", con->local_offset);
-    printf("[ox-fabrics: Remote RIO offset is %ld]\n", con->remote_offset);
 
     con->running = 1;
     if (pthread_create(&con->recv_th, NULL, oxf_roce_client_recv, (void *) con)){
@@ -154,17 +179,9 @@ static int oxf_roce_client_send (struct oxf_client_con *con, uint32_t size,
 {
     uint32_t ret;
 
-    ret = riowrite(con->sock_fd, buf, size, con->remote_offset, 0);
-    if(ret != size){
-        perror("RIO Write failed");
+    ret = rsend(con->sock_fd, buf, size, 0);
+    if (ret != size)
         return -1;
-    }
-
-    ret = rsend(con->sock_fd, &size, sizeof(size), 0);
-    if (ret != sizeof(size)){
-        perror("RIO Notify failed");
-        return -1;
-    }
 
     return 0;
 }
