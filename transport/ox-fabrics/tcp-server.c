@@ -349,7 +349,7 @@ void oxf_tcp_server_exit (struct oxf_server *server)
     ox_free (server, OX_MEM_TCP_SERVER);
 }
 
-struct oxf_server_ops oxf_tcp_srv_ops = {
+static struct oxf_server_ops oxf_tcp_srv_ops = {
     .bind    = oxf_tcp_server_bind,
     .unbind  = oxf_tcp_server_unbind,
     .start   = oxf_tcp_server_con_start,

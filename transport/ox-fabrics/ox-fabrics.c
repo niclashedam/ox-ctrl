@@ -29,9 +29,6 @@
 #include <nvme.h>
 #include <ox-fabrics.h>
 
-#include <rdma/rdma_cma.h>
-#include <rdma/rsocket.h>
-
 #define OXF_MAX_ENT 4096
 
 struct oxf_tgt_reply {
@@ -256,8 +253,6 @@ static void oxf_fabrics_rcv_fn (uint32_t size, void *arg, void *recv_cli)
                         memcpy (reply->cli, recv_cli, sizeof (struct sockaddr));
                         break;
                     case OXF_ROCE:
-                        memcpy (reply->cli, recv_cli, sizeof (struct rdma_cm_id));
-                        break;
                     case OXF_TCP:
                         default:
                         memcpy (reply->cli, recv_cli, sizeof (int));
@@ -295,12 +290,6 @@ static void oxf_fabrics_rcv_fn (uint32_t size, void *arg, void *recv_cli)
                 log_err ("[ox-fabrics: Capsule not processed.]\n");
 
             break;
-        case OXF_RDMA_PUSH_BYTE:
-		// if we receive a PUSH byte we should riowrite to the address
-		break;
-	case OXF_RDMA_PULL_BYTE:
-		// if we receive a PULL byte it means that the other instance wants us to send a PUSH byte
-		break;
         default:
             log_err ("[ox-fabrics: Unknown capsule: %x.]\n", capsule->type);
             break;
@@ -354,6 +343,10 @@ static int oxf_create_queue (uint16_t qid)
     for (ent_i = 0; ent_i < OXF_MAX_ENT; ent_i++) {
         reply->reply_ent[ent_i].type = OXF_PROTOCOL;
         TAILQ_INSERT_TAIL(&reply->reply_fh, &reply->reply_ent[ent_i], entry);
+        if(OXF_PROTOCOL == OXF_ROCE){
+	    // riomap(con->sock_fd, &reply->reply_ent[ent_i].capsule.data, OXF_SQC_MAX_DATA, PROT_WRITE, 0, -1);
+            // riomap(con->sock_fd, &reply->reply_ent[ent_i].cq_capsule.cqc.data, OXF_CQC_MAX_DATA, PROT_WRITE, 0, -1);
+        }
     }
 
     reply->in_use = 1;

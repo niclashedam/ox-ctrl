@@ -33,7 +33,6 @@
 #include <pthread.h>
 #include <nvme.h>
 #include <nvmef.h>
-#include <rdma/rsocket.h>
 
 #define OXF_DEBUG       0
 
@@ -225,12 +224,18 @@ typedef int  (oxf_svr_reply) (struct oxf_server_con *con, const void *buf,
 typedef struct oxf_server_con *(oxf_svr_bind) (struct oxf_server *server,
                             uint16_t conn_id, const char *addr, uint16_t port);
 
+typedef off_t (oxf_svr_map) (struct oxf_server *server, uint16_t cid, void *buffer, uint32_t size);
+typedef int (oxf_svr_unmap) (struct oxf_server *server, uint16_t cid, void *buffer, uint32_t size);
+
 struct oxf_server_ops {
     oxf_svr_bind          *bind;
     oxf_svr_unbind        *unbind;
     oxf_svr_conn_start    *start;
     oxf_svr_conn_stop     *stop;
     oxf_svr_reply         *reply;
+
+    oxf_svr_map           *map;
+    oxf_svr_unmap         *unmap;
 };
 
 struct oxf_server {
@@ -247,6 +252,8 @@ struct oxf_server *oxf_tcp_server_init (void);
 void               oxf_tcp_server_exit (struct oxf_server *server);
 struct oxf_server *oxf_roce_server_init (void);
 void               oxf_roce_server_exit (struct oxf_server *server);
+
+static struct oxf_server_ops oxf_tcp_srv_ops;
 
 /* CLIENT */
 

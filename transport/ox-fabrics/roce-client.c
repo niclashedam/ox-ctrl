@@ -141,9 +141,11 @@ static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client
         return NULL;
     }
 
+    int rdma_buffers = OXF_QUEUE_SIZE * OXF_SERVER_MAX_CON;
     int buffer_size = OXF_MAX_DGRAM * OXF_QUEUE_SIZE;
     rsetsockopt(con->sock_fd, SOL_SOCKET, SO_SNDBUF, (void *) &buffer_size, sizeof buffer_size);
     rsetsockopt(con->sock_fd, SOL_SOCKET, SO_RCVBUF, (void *) &buffer_size, sizeof buffer_size);
+    rsetsockopt(con->sock_fd, SOL_SOCKET, SOL_RDMA, (void *) &rdma_buffers, sizeof rdma_buffers);
 
     len = sizeof (struct sockaddr);
     con->addr.sin_family = AF_INET;
