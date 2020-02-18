@@ -7,7 +7,7 @@ add_definitions (-DCONFIG_PATCHLEVEL=6)
 add_definitions (-DCONFIG_SUBLEVEL=0)
 add_definitions (-DCONFIG_LABEL="The Ultimate Dragon")
 
-set(CMAKE_C_FLAGS "-fPIC -pthread -fopenmp -Wall")
+set(CMAKE_C_FLAGS "-fPIC -g -pthread -fopenmp -Wall")
 
 include_directories(${PROJECT_SOURCE_DIR}/include
                     ${PROJECT_SOURCE_DIR}/host
@@ -19,6 +19,8 @@ include_directories(${PROJECT_SOURCE_DIR}/include
 install(FILES "${PROJECT_SOURCE_DIR}/host/nvme-host.h"
 	      "${PROJECT_SOURCE_DIR}/host/nvme-host-dev.h"
               "${PROJECT_SOURCE_DIR}/transport/ox-fabrics/ox-fabrics.h"
+              "${PROJECT_SOURCE_DIR}/transport/ox-fabrics/tcp.h"
+              "${PROJECT_SOURCE_DIR}/transport/ox-fabrics/roce-rdma.h"
               "${PROJECT_SOURCE_DIR}/include/libox.h"
               "${PROJECT_SOURCE_DIR}/include/nvme.h"
               "${PROJECT_SOURCE_DIR}/include/nvmef.h"
@@ -139,6 +141,7 @@ set(SRC_TRANSP_FABRICS_H
         ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/udp-client.c
         ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/tcp-client.c
         ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/roce-client.c
+        ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/roce-rdma.c
         ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/ox-host.c)
 add_library ( ox-fabrics-host STATIC ${SRC_TRANSP_FABRICS_H} )
 target_link_libraries ( ox-fabrics-host ox )
@@ -149,6 +152,7 @@ set(SRC_TRANSP_FABRICS_T
         ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/udp-server.c
         ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/tcp-server.c
         ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/roce-server.c
+        ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/roce-rdma.c
         ${PROJECT_SOURCE_DIR}/transport/ox-fabrics/ox-fabrics.c)
 add_library ( ox-transport-fabrics-tgt STATIC ${SRC_TRANSP_FABRICS_T} )
 target_link_libraries ( ox-transport-fabrics-tgt ox )

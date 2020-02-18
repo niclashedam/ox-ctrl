@@ -41,7 +41,7 @@
 /* Last connection ID that has received a 'connect' command */
 uint16_t pending_conn;
 
-static struct oxf_server_con *oxf_tcp_server_bind (struct oxf_server *server,
+struct oxf_server_con *oxf_tcp_server_bind (struct oxf_server *server,
                                 uint16_t cid, const char *addr, uint16_t port)
 {
     struct oxf_server_con *con;
@@ -114,7 +114,7 @@ ERR:
     return NULL;
 }
 
-static void oxf_tcp_server_unbind (struct oxf_server_con *con)
+void oxf_tcp_server_unbind (struct oxf_server_con *con)
 {
     if (con) {
         shutdown (con->sock_fd, 0);
@@ -125,7 +125,7 @@ static void oxf_tcp_server_unbind (struct oxf_server_con *con)
     }
 }
 
-static uint16_t oxf_tcp_server_process_msg (struct oxf_server_con *con,
+uint16_t oxf_tcp_server_process_msg (struct oxf_server_con *con,
                 uint8_t *buffer, uint8_t *broken, uint16_t *brkb,
                 uint16_t conn_id, int msg_bytes)
 {
@@ -184,7 +184,7 @@ static uint16_t oxf_tcp_server_process_msg (struct oxf_server_con *con,
     return brk_bytes;
 }
 
-static void *oxf_tcp_server_con_th (void *arg)
+void *oxf_tcp_server_con_th (void *arg)
 {
     struct oxf_server_con *con = (struct oxf_server_con *) arg;
     uint16_t brk_bytes = 0;
@@ -242,7 +242,7 @@ static void *oxf_tcp_server_con_th (void *arg)
     return NULL;
 }
 
-static void *oxf_tcp_server_accept_th (void *arg)
+void *oxf_tcp_server_accept_th (void *arg)
 {
     struct oxf_server_con *con = (struct oxf_server_con *) arg;
     struct sockaddr_in client;
@@ -285,7 +285,7 @@ static void *oxf_tcp_server_accept_th (void *arg)
     return NULL;
 }
 
-static int oxf_tcp_server_reply(struct oxf_server_con *con, const void *buf,
+int oxf_tcp_server_reply(struct oxf_server_con *con, const void *buf,
                                                  uint32_t size, void *recv_cli)
 {
     int *client = (int *) recv_cli;
@@ -304,7 +304,7 @@ static int oxf_tcp_server_reply(struct oxf_server_con *con, const void *buf,
     return 0;
 }
 
-static int oxf_tcp_server_con_start (struct oxf_server_con *con, oxf_rcv_fn *fn)
+int oxf_tcp_server_con_start (struct oxf_server_con *con, oxf_rcv_fn *fn)
 {
     if (con->running)
         return 0;
@@ -321,7 +321,7 @@ static int oxf_tcp_server_con_start (struct oxf_server_con *con, oxf_rcv_fn *fn)
     return 0;
 }
 
-static void oxf_tcp_server_con_stop (struct oxf_server_con *con)
+void oxf_tcp_server_con_stop (struct oxf_server_con *con)
 {
     uint32_t cli_id;
 
@@ -349,12 +349,35 @@ void oxf_tcp_server_exit (struct oxf_server *server)
     ox_free (server, OX_MEM_TCP_SERVER);
 }
 
-static struct oxf_server_ops oxf_tcp_srv_ops = {
+off_t oxf_tcp_server_map (struct oxf_server *server, uint16_t cid, void *buffer, uint32_t size){
+  return 0; // TCP does not support RDMA
+}
+
+int oxf_tcp_server_unmap (struct oxf_server *server, uint16_t cid, void *buffer, uint32_t size){
+  return 0; // TCP does not support RDMA
+}
+
+int oxf_tcp_server_rdma_req (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
+    switch (dir) {
+        case NVM_DMA_TO_HOST:
+            memcpy ((void *) prp, buf, size);
+        case NVM_DMA_FROM_HOST:
+            memcpy (buf, (void *) prp, size);
+    }
+
+    return 0;
+}
+
+struct oxf_server_ops oxf_tcp_srv_ops = {
     .bind    = oxf_tcp_server_bind,
     .unbind  = oxf_tcp_server_unbind,
     .start   = oxf_tcp_server_con_start,
     .stop    = oxf_tcp_server_con_stop,
-    .reply   = oxf_tcp_server_reply
+    .reply   = oxf_tcp_server_reply,
+
+    .map     = oxf_tcp_server_map,
+    .unmap   = oxf_tcp_server_unmap,
+    .rdma    = oxf_tcp_server_rdma_req
 };
 
 struct oxf_server *oxf_tcp_server_init (void)

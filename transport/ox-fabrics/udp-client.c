@@ -31,7 +31,7 @@
 #include <pthread.h>
 #include <ox-fabrics.h>
 
-static void *oxf_udp_client_recv (void *arg)
+void *oxf_udp_client_recv (void *arg)
 {
     int n;
     unsigned int len;
@@ -49,7 +49,7 @@ static void *oxf_udp_client_recv (void *arg)
     return NULL;
 }
 
-static struct oxf_client_con *oxf_udp_client_connect (struct oxf_client *client,
+struct oxf_client_con *oxf_udp_client_connect (struct oxf_client *client,
        uint16_t cid, const char *addr, uint16_t port, oxf_rcv_reply_fn *recv_fn)
 {
     struct oxf_client_con *con;
@@ -135,7 +135,7 @@ NOT_CONNECTED:
     return NULL;
 }
 
-static int oxf_udp_client_send (struct oxf_client_con *con, uint32_t size,
+int oxf_udp_client_send (struct oxf_client_con *con, uint32_t size,
                                                                 const void *buf)
 {
     unsigned int len;
@@ -151,7 +151,7 @@ static int oxf_udp_client_send (struct oxf_client_con *con, uint32_t size,
     return 0;
 }
 
-static void oxf_udp_client_disconnect (struct oxf_client_con *con)
+void oxf_udp_client_disconnect (struct oxf_client_con *con)
 {
     if (con) {
         con->running = 0;

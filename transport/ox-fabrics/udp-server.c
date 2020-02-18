@@ -32,7 +32,7 @@
 #include <ox-fabrics.h>
 #include <libox.h>
 
-static struct oxf_server_con *oxf_udp_server_bind (struct oxf_server *server,
+struct oxf_server_con *oxf_udp_server_bind (struct oxf_server *server,
                                 uint16_t cid, const char *addr, uint16_t port)
 {
     struct oxf_server_con *con;
@@ -100,7 +100,7 @@ ERR:
     return NULL;
 }
 
-static void oxf_udp_server_unbind (struct oxf_server_con *con)
+void oxf_udp_server_unbind (struct oxf_server_con *con)
 {
     if (con) {
         shutdown (con->sock_fd, 0);
@@ -111,7 +111,7 @@ static void oxf_udp_server_unbind (struct oxf_server_con *con)
     }
 }
 
-static void *oxf_udp_server_con_th (void *arg)
+void *oxf_udp_server_con_th (void *arg)
 {
     struct oxf_server_con *con = (struct oxf_server_con *) arg;
     struct sockaddr_in client;
@@ -149,7 +149,7 @@ ACK:
     return NULL;
 }
 
-static int oxf_udp_server_reply(struct oxf_server_con *con, const void *buf,
+int oxf_udp_server_reply(struct oxf_server_con *con, const void *buf,
                                                  uint32_t size, void *recv_cli)
 {
     struct sockaddr *client = (struct sockaddr *) recv_cli;
@@ -167,7 +167,7 @@ static int oxf_udp_server_reply(struct oxf_server_con *con, const void *buf,
     return 0;
 }
 
-static int oxf_udp_server_con_start (struct oxf_server_con *con, oxf_rcv_fn *fn)
+int oxf_udp_server_con_start (struct oxf_server_con *con, oxf_rcv_fn *fn)
 {
     con->running = 1;
     con->rcv_fn = fn;
@@ -181,7 +181,7 @@ static int oxf_udp_server_con_start (struct oxf_server_con *con, oxf_rcv_fn *fn)
     return 0;
 }
 
-static void oxf_udp_server_con_stop (struct oxf_server_con *con)
+void oxf_udp_server_con_stop (struct oxf_server_con *con)
 {
     if (con && con->running)
 	con->running = 0;

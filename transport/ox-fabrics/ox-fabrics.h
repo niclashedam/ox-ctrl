@@ -68,6 +68,9 @@
 #define OXF_PORT_3        35502
 #define OXF_PORT_4        35503
 
+#define RDMA_ADDR	"10.2.1.2"
+#define RDMA_PORT	36000
+
 #define OXF_SERVER_MAX_CON  64
 #define OXF_CLIENT_MAX_CON  64
 #define OXF_MAX_DGRAM       65507   /* Max UDP datagram size */
@@ -95,6 +98,24 @@ enum oxf_capsule_types {
 #define OXF_FAB_CMD_SZ      OXF_NVME_CMD_SZ + OXF_FAB_HEADER_SZ
 #define OXF_FAB_CQE_SZ      OXF_NVME_CQE_SZ + OXF_FAB_HEADER_SZ
 #define OXF_FAB_CAPS_SZ     OXF_CAPSULE_SZ + OXF_FAB_HEADER_SZ
+
+/* RDMA */
+typedef int (oxf_rdma_req) (void *buf, uint32_t size, uint64_t prp, uint8_t dir);
+enum oxf_rdma_directions { OXF_RDMA_PUSH, OXF_RDMA_PULL, OXF_RDMA_CONFIRM };
+
+struct oxf_rdma_request {
+  int direction;
+  off_t local_addr;
+  off_t remote_addr;
+  size_t size;
+  off_t fulfilment_bit;
+};
+
+struct oxf_rdma_state {
+  int con_fd;
+  int *is_running;
+};
+/* RDMA END */
 
 struct nvme_sgl_desc {
     union {
@@ -236,6 +257,7 @@ struct oxf_server_ops {
 
     oxf_svr_map           *map;
     oxf_svr_unmap         *unmap;
+    oxf_rdma_req          *rdma;
 };
 
 struct oxf_server {
@@ -253,8 +275,6 @@ void               oxf_tcp_server_exit (struct oxf_server *server);
 struct oxf_server *oxf_roce_server_init (void);
 void               oxf_roce_server_exit (struct oxf_server *server);
 
-static struct oxf_server_ops oxf_tcp_srv_ops;
-
 /* CLIENT */
 
 typedef void               (oxf_cli_disconnect) (struct oxf_client_con *con);
@@ -263,10 +283,17 @@ typedef int                (oxf_cli_send) (struct oxf_client_con *con,
 typedef struct oxf_client_con *(oxf_cli_connect) (struct oxf_client *client,
       uint16_t cid, const char *addr, uint16_t port, oxf_rcv_reply_fn *recv_fn);
 
+typedef off_t (oxf_cli_map) (struct oxf_server *server, uint16_t cid, void *buffer, uint32_t size);
+typedef int (oxf_cli_unmap) (struct oxf_server *server, uint16_t cid, void *buffer, uint32_t size);
+
 struct oxf_client_ops {
     oxf_cli_connect     *connect;
     oxf_cli_disconnect  *disconnect;
     oxf_cli_send        *send;
+
+    oxf_cli_map           *map;
+    oxf_cli_unmap         *unmap;
+    oxf_rdma_req	*rdma;
 };
 
 struct oxf_client {

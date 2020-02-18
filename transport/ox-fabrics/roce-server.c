@@ -1,6 +1,6 @@
 /* OX: Open-Channel NVM Express SSD Controller
  *
- *  - OX NVMe over roce (server side)
+ *  - OX NVMe over RoCE (server side)
  *
  * Copyright 2018 IT University of Copenhagen
  *
@@ -34,46 +34,117 @@
 #include <sched.h>
 #include <errno.h>
 #include <ox-fabrics.h>
+#include <tcp.h>
 #include <libox.h>
+#include <roce-rdma.h>
 
 #include <rdma/rsocket.h>
 
-static struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
+static int is_running;
+static int sock_fd = 0, con_fd = 0;
+struct oxf_rdma_state state;
+pthread_t handler;
+
+struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
                                 uint16_t cid, const char *addr, uint16_t port)
 {
-  return oxf_tcp_srv_ops.bind(server, cid, addr, port);
+    struct sockaddr_in inet_addr;
+    unsigned int len = sizeof (struct sockaddr);
+
+    if(sock_fd > 0) return oxf_tcp_server_bind(server, cid, addr, port);
+
+    if ( (sock_fd = rsocket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
+        log_err ("[ox-fabrics (RDMA): Socket creation failure. %d]", sock_fd);
+        return NULL;
+    }
+
+    inet_addr.sin_family = AF_INET;
+    inet_addr.sin_port = htons(RDMA_PORT);
+    inet_aton(RDMA_ADDR, &inet_addr.sin_addr);
+
+    int RIOs = OXF_QUEUE_SIZE * OXF_SERVER_MAX_CON;
+    rsetsockopt(sock_fd, SOL_RDMA, RDMA_IOMAPSIZE, (void *) &RIOs, sizeof RIOs);
+
+    if ( rbind(sock_fd, (const struct sockaddr *) &inet_addr,
+                                    sizeof(inet_addr)) < 0 )
+    {
+        log_err ("[ox-fabrics (RDMA): Socket bind failure.]");
+        goto ERR;
+    }
+
+    /* Put the socket in listen mode to accepting connections */
+    if (rlisten (sock_fd, 16)) {
+        log_err ("[ox-fabrics (RDMA): Socket listen failure.]");
+        goto ERR;
+    }
+
+    con_fd = raccept(sock_fd, (struct sockaddr *) &inet_addr, &len);
+    if (con_fd == -1) {
+        log_err ("[ox-fabrics (RDMA): Socket accept failure.]");
+        goto ERR;
+    }
+
+    is_running = 1;
+
+    state.con_fd = con_fd;
+    state.is_running = &is_running;
+
+    pthread_create(&handler, NULL, &oxf_roce_rdma_handler, &state);
+    return oxf_tcp_server_bind(server, cid, addr, port);
+
+ERR:
+    rshutdown (sock_fd, 2);
+    rclose (sock_fd);
+    return NULL;
+
 }
 
-static void oxf_roce_server_unbind (struct oxf_server_con *con)
+void oxf_roce_server_unbind (struct oxf_server_con *con)
 {
-  oxf_tcp_srv_ops.unbind(con);
+  is_running = 0;
+  void *result;
+  pthread_join(handler, &result);
+
+  if (con_fd) rshutdown(con_fd, 0);
+  rshutdown (sock_fd, 0);
+  rclose (sock_fd);
+  oxf_tcp_server_unbind(con);
 }
 
-
-static int oxf_roce_server_con_start (struct oxf_server_con *con, oxf_rcv_fn *fn)
+int oxf_roce_server_con_start (struct oxf_server_con *con, oxf_rcv_fn *fn)
 {
-  return oxf_tcp_srv_ops.start(con, fn);
+  return oxf_tcp_server_con_start(con, fn);
 }
 
-static void oxf_roce_server_con_stop (struct oxf_server_con *con)
+void oxf_roce_server_con_stop (struct oxf_server_con *con)
 {
-  oxf_tcp_srv_ops.stop(con);
+  oxf_tcp_server_con_stop(con);
 }
 
-static int oxf_roce_server_reply (struct oxf_server_con *con, const void *buf,
+int oxf_roce_server_reply (struct oxf_server_con *con, const void *buf,
                                                  uint32_t size, void *recv_cli)
 {
-  return oxf_tcp_srv_ops.reply(con, buf, size, recv_cli);
+  return oxf_tcp_server_reply(con, buf, size, recv_cli);
 }
 
 off_t oxf_roce_server_map (struct oxf_server *server, uint16_t cid, void *buffer, uint32_t size){
-    struct oxf_server_con *con = server->connections[cid];
-    return riomap(con->sock_fd, buffer, size, PROT_WRITE, 0, -1);
+    if (con_fd < 1) {
+        log_err ("[ox-fabrics (RDMA): Cannot map buffer to unconnected client.]");
+        return 0;
+    }
+    return riomap(con_fd, buffer, size, PROT_WRITE, 0, -1);
 }
 
 int oxf_roce_server_unmap (struct oxf_server *server, uint16_t cid, void *buffer, uint32_t size){
-    struct oxf_server_con *con = server->connections[cid];
-    return riounmap(con->sock_fd, buffer, size);
+    if (con_fd < 1) {
+        log_err ("[ox-fabrics (RDMA): Cannot unmap buffer to unconnected client.]");
+        return -1;
+    }
+    return riounmap(con_fd, buffer, size);
+}
+
+int oxf_roce_server_rdma_req (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
+  return oxf_roce_rdma(con_fd, buf, size, prp, dir);
 }
 
 struct oxf_server_ops oxf_roce_srv_ops = {
@@ -84,12 +155,15 @@ struct oxf_server_ops oxf_roce_srv_ops = {
     .reply   = oxf_roce_server_reply,
 
     .map     = oxf_roce_server_map,
-    .unmap   = oxf_roce_server_unmap
+    .unmap   = oxf_roce_server_unmap,
+    .rdma    = oxf_roce_server_rdma_req
 };
 
 struct oxf_server *oxf_roce_server_init (void)
 {
-  return oxf_tcp_server_init();
+  struct oxf_server *server = oxf_tcp_server_init();
+  server->ops = &oxf_roce_srv_ops;
+  return server;
 }
 
 void oxf_roce_server_exit (struct oxf_server *server)

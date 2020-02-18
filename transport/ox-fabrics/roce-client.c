@@ -29,198 +29,109 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <tcp.h>
 #include <ox-fabrics.h>
+#include <roce-rdma.h>
 
-#include <rdma/rsocket.h> 
+#include <rdma/rsocket.h>
 
-static uint16_t oxf_roce_client_process_msg (struct oxf_client_con *con,
-                uint8_t *buffer, uint8_t *broken, uint16_t *brkb,
-                int msg_bytes)
-{
-    uint16_t offset = 0, fix = 0, msg_sz, brk_bytes = *brkb;
-
-    if (brk_bytes) {
-
-        if (brk_bytes < 3) {
-
-            if (msg_bytes + brk_bytes < 3) {
-                memcpy (&broken[brk_bytes], buffer, msg_bytes);
-                brk_bytes += msg_bytes;
-                return brk_bytes;
-            }
-
-            memcpy (&broken[brk_bytes], buffer, 3 - brk_bytes);
-            offset = fix = 3 - brk_bytes;
-            msg_bytes -= 3 - brk_bytes;
-            brk_bytes = 3;
-            if (!msg_bytes)
-                return brk_bytes;
-        }
-
-        msg_sz = ((struct oxf_capsule_sq *) broken)->size;
-
-        if (brk_bytes + msg_bytes < msg_sz) {
-            memcpy (&broken[brk_bytes], &buffer[offset], msg_bytes);
-            brk_bytes += msg_bytes;
-            return brk_bytes;
-        }
-
-        memcpy (&broken[brk_bytes], &buffer[offset], msg_sz - brk_bytes);
-        con->recv_fn (msg_sz, (void *) broken);
-        offset += msg_sz - brk_bytes;
-        brk_bytes = 0;
-    }
-
-    msg_bytes += fix;
-    while (offset < msg_bytes) {
-        if ( (msg_bytes - offset < 3) ||
-            (msg_bytes - offset <
-                         ((struct oxf_capsule_sq *) &buffer[offset])->size) ) {
-            memcpy (broken, &buffer[offset], msg_bytes - offset);
-            brk_bytes = msg_bytes - offset;
-            offset += msg_bytes - offset;
-            continue;
-        }
-
-        msg_sz = ((struct oxf_capsule_sq *) &buffer[offset])->size;
-        con->recv_fn (msg_sz, (void *) &buffer[offset]);
-        offset += msg_sz;
-    }
-
-    return brk_bytes;
-}
-
-static void *oxf_roce_client_recv (void *arg)
-{
-    ssize_t msg_bytes;
-    uint16_t brk_bytes = 0;
-    uint8_t buffer[OXF_MAX_DGRAM + 1];
-    uint8_t broken[OXF_MAX_DGRAM + 1];
-    struct oxf_client_con *con = (struct oxf_client_con *) arg;
-
-    while (con->running) {
-        msg_bytes = rrecv(con->sock_fd , buffer, OXF_MAX_DGRAM, MSG_DONTWAIT);
-
-        if (msg_bytes <= 0)
-            continue;
-
-        brk_bytes = oxf_roce_client_process_msg (con, buffer, broken,
-                                                        &brk_bytes, msg_bytes);
-    }
-
-    return NULL;
-}
+static int is_running;
+static int sock_fd = 0;
+struct oxf_rdma_state state;
+pthread_t handler;
 
 static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client,
        uint16_t cid, const char *addr, uint16_t port, oxf_rcv_reply_fn *recv_fn)
 {
-    struct oxf_client_con *con;
-    unsigned int len;
+    struct sockaddr_in inet_addr;
+    unsigned int len = sizeof (struct sockaddr);
 
-    if (cid >= OXF_SERVER_MAX_CON) {
-        printf ("[ox-fabrics: Invalid connection ID: %d]\n", cid);
+    if ( (sock_fd = rsocket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
+        log_err ("[ox-fabrics (RDMA): Socket creation failure. %d]", sock_fd);
         return NULL;
     }
 
-    if (client->connections[cid]) {
-        printf ("[ox-fabrics: Connection already established: %d]\n", cid);
+    inet_addr.sin_family = AF_INET;
+    inet_addr.sin_port = htons(RDMA_PORT);
+    inet_aton(RDMA_ADDR, &inet_addr.sin_addr);
+
+    int RIOs = OXF_QUEUE_SIZE * OXF_CLIENT_MAX_CON;
+    rsetsockopt(sock_fd, SOL_RDMA, RDMA_IOMAPSIZE, (void *) &RIOs, sizeof RIOs);
+
+    if ( rconnect(sock_fd, (const struct sockaddr *) &inet_addr, len) < 0){
+        printf ("[ox-fabrics (RDMA): Socket connection failure.]\n");
+        rshutdown(sock_fd, 0);
+        rclose(sock_fd);
         return NULL;
     }
 
-    con = calloc (1, sizeof (struct oxf_client_con));
-    if (!con)
-	return NULL;
+    is_running = 1;
 
-    con->cid = cid;
-    con->client = client;
-    con->recv_fn = recv_fn;
+    state.con_fd = sock_fd;
+    state.is_running = &is_running;
 
-    if ( (con->sock_fd = rsocket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
-        printf ("[ox-fabrics: Socket creation failure]\n");
-        free (con);
-        return NULL;
-    }
+    pthread_create(&handler, NULL, &oxf_roce_rdma_handler, &state);
 
-    int rdma_buffers = OXF_QUEUE_SIZE * OXF_SERVER_MAX_CON;
-    int buffer_size = OXF_MAX_DGRAM * OXF_QUEUE_SIZE;
-    rsetsockopt(con->sock_fd, SOL_SOCKET, SO_SNDBUF, (void *) &buffer_size, sizeof buffer_size);
-    rsetsockopt(con->sock_fd, SOL_SOCKET, SO_RCVBUF, (void *) &buffer_size, sizeof buffer_size);
-    rsetsockopt(con->sock_fd, SOL_SOCKET, SOL_RDMA, (void *) &rdma_buffers, sizeof rdma_buffers);
-
-    len = sizeof (struct sockaddr);
-    con->addr.sin_family = AF_INET;
-    inet_aton (addr, (struct in_addr *) &con->addr.sin_addr.s_addr);
-    con->addr.sin_port = htons(port);
-
-    if ( rconnect(con->sock_fd, (const struct sockaddr *) &con->addr , len) < 0){
-        printf ("[ox-fabrics: Socket connection failure.]\n");
-        goto NOT_CONNECTED;
-    }
-
-    con->running = 1;
-    if (pthread_create(&con->recv_th, NULL, oxf_roce_client_recv, (void *) con)){
-        printf ("[ox-fabrics: Receive reply thread not started.]\n");
-        goto NOT_CONNECTED;
-    }
-
-    client->connections[cid] = con;
-    client->n_con++;
-
-    return con;
-
-NOT_CONNECTED:
-    con->running = 0;
-    rshutdown (con->sock_fd, 0);
-    rclose (con->sock_fd);
-    free (con);
-    return NULL;
+    return oxf_tcp_client_connect(client, cid, addr, port, recv_fn);
 }
+
 
 static int oxf_roce_client_send (struct oxf_client_con *con, uint32_t size,
                                                                 const void *buf)
 {
-    uint32_t ret;
-
-    ret = rsend(con->sock_fd, buf, size, 0);
-    if (ret != size)
-        return -1;
-
-    return 0;
+    return oxf_tcp_client_send(con, size, buf);
 }
 
-static void oxf_roce_client_disconnect (struct oxf_client_con *con)
+void oxf_roce_client_disconnect (struct oxf_client_con *con)
 {
-    if (con) {
-        con->running = 0;
-        pthread_join (con->recv_th, NULL);
-        rshutdown (con->sock_fd, 0);
-        rclose (con->sock_fd);
-        con->client->connections[con->cid] = NULL;
-        con->client->n_con--;
-        free (con);
-    }
+    is_running = 0;
+    void *result;
+    pthread_join(handler, &result);
+
+    rshutdown (sock_fd, 0);
+    rclose (sock_fd);
+
+    oxf_tcp_client_disconnect(con);
 }
 
 void oxf_roce_client_exit (struct oxf_client *client)
 {
-    free (client);
+    oxf_tcp_client_exit(client);
+}
+
+off_t oxf_roce_client_map (struct oxf_server *server, uint16_t cid, void *buffer, uint32_t size){
+    if (sock_fd < 1) {
+        log_err ("[ox-fabrics (RDMA): Cannot map buffer to unconnected client.]");
+        return 0;
+    }
+    return riomap(sock_fd, buffer, size, PROT_WRITE, 0, -1);
+}
+
+int oxf_roce_client_unmap (struct oxf_server *server, uint16_t cid, void *buffer, uint32_t size){
+    if (sock_fd < 1) {
+        log_err ("[ox-fabrics (RDMA): Cannot unmap buffer to unconnected client.]");
+        return -1;
+    }
+    return riounmap(sock_fd, buffer, size);
+}
+
+int oxf_roce_client_rdma_req (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
+  return oxf_roce_rdma(sock_fd, buf, size, prp, dir);
 }
 
 struct oxf_client_ops oxf_roce_cli_ops = {
     .connect    = oxf_roce_client_connect,
     .disconnect = oxf_roce_client_disconnect,
-    .send       = oxf_roce_client_send
+    .send       = oxf_roce_client_send,
+
+    .map     = oxf_roce_client_map,
+    .unmap   = oxf_roce_client_unmap,
+    .rdma = oxf_roce_client_rdma_req
 };
 
 struct oxf_client *oxf_roce_client_init (void)
 {
-    struct oxf_client *client;
-
-    client = calloc (1, sizeof (struct oxf_client));
-    if (!client)
-	return NULL;
-
-    client->ops = &oxf_roce_cli_ops;
-
-    return client;
+  struct oxf_client *client = oxf_tcp_client_init();
+  client->ops = &oxf_roce_cli_ops;
+  return client;
 }

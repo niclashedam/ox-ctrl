@@ -31,7 +31,7 @@
 #include <pthread.h>
 #include <ox-fabrics.h>
 
-static uint16_t oxf_tcp_client_process_msg (struct oxf_client_con *con,
+uint16_t oxf_tcp_client_process_msg (struct oxf_client_con *con,
                 uint8_t *buffer, uint8_t *broken, uint16_t *brkb,
                 int msg_bytes)
 {
@@ -88,7 +88,7 @@ static uint16_t oxf_tcp_client_process_msg (struct oxf_client_con *con,
     return brk_bytes;
 }
 
-static void *oxf_tcp_client_recv (void *arg)
+void *oxf_tcp_client_recv (void *arg)
 {
     ssize_t msg_bytes;
     uint16_t brk_bytes = 0;
@@ -109,7 +109,7 @@ static void *oxf_tcp_client_recv (void *arg)
     return NULL;
 }
 
-static struct oxf_client_con *oxf_tcp_client_connect (struct oxf_client *client,
+struct oxf_client_con *oxf_tcp_client_connect (struct oxf_client *client,
        uint16_t cid, const char *addr, uint16_t port, oxf_rcv_reply_fn *recv_fn)
 {
     struct oxf_client_con *con;
@@ -177,7 +177,7 @@ NOT_CONNECTED:
     return NULL;
 }
 
-static int oxf_tcp_client_send (struct oxf_client_con *con, uint32_t size,
+int oxf_tcp_client_send (struct oxf_client_con *con, uint32_t size,
                                                                 const void *buf)
 {
     uint32_t ret;
@@ -189,7 +189,7 @@ static int oxf_tcp_client_send (struct oxf_client_con *con, uint32_t size,
     return 0;
 }
 
-static void oxf_tcp_client_disconnect (struct oxf_client_con *con)
+void oxf_tcp_client_disconnect (struct oxf_client_con *con)
 {
     if (con) {
         con->running = 0;
@@ -207,10 +207,33 @@ void oxf_tcp_client_exit (struct oxf_client *client)
     free (client);
 }
 
+off_t oxf_tcp_client_map (struct oxf_server *server, uint16_t cid, void *buffer, uint32_t size){
+  return 0; // TCP does not support RDMA
+}
+
+int oxf_tcp_client_unmap (struct oxf_server *server, uint16_t cid, void *buffer, uint32_t size){
+  return 0; // TCP does not support RDMA
+}
+
+int oxf_tcp_client_rdma_req (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
+    switch (dir) {
+        case NVM_DMA_TO_HOST:
+            memcpy ((void *) prp, buf, size);
+        case NVM_DMA_FROM_HOST:
+            memcpy (buf, (void *) prp, size);
+    }
+
+    return 0;
+}
+
 struct oxf_client_ops oxf_tcp_cli_ops = {
     .connect    = oxf_tcp_client_connect,
     .disconnect = oxf_tcp_client_disconnect,
-    .send       = oxf_tcp_client_send
+    .send       = oxf_tcp_client_send,
+
+    .map     = oxf_tcp_client_map,
+    .unmap   = oxf_tcp_client_unmap,
+    .rdma    = oxf_tcp_client_rdma_req
 };
 
 struct oxf_client *oxf_tcp_client_init (void)

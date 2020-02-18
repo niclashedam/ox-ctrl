@@ -270,7 +270,13 @@ int oxf_host_submit_io (uint16_t qid, struct nvme_cmd *ncmd,
     qcmd->capsule.cqc.cqe.cid = qcmd->cid;
     qcmd->capsule.cqc.cqe.sq_id = qid;
     qcmd->capsule.type = OXF_CMD_BYTE;
+
+    #if OXF_PROTOCOL == OXF_ROCE
+    qcmd->capsule.size = OXF_FAB_CMD_SZ + NVMEF_SGL_SZ;
+    #else
     qcmd->capsule.size = bytes;
+    #endif
+
     qcmd->ctx = ctx;
     qcmd->cb_fn = cb;
     qcmd->mq_req = NULL;

@@ -60,17 +60,9 @@ static struct oxf_tgt_fabrics fabrics;
 extern struct core_struct core;
 extern uint16_t pending_conn;
 
-/* OX Fabrics uses In-capsule data for now, so RDMA is a memory copy */
 int oxf_rdma (void *buf, uint32_t size, uint64_t prp, uint8_t dir)
 {
-    switch (dir) {
-        case NVM_DMA_TO_HOST:
-            memcpy ((void *) prp, buf, size);
-        case NVM_DMA_FROM_HOST:
-            memcpy (buf, (void *) prp, size);
-    }
-
-    return 0;
+    return fabrics.server->ops->rdma(buf, size, prp, dir);
 }
 
 int oxf_complete (NvmeCqe *cqe, void *ctx)
@@ -80,8 +72,15 @@ int oxf_complete (NvmeCqe *cqe, void *ctx)
     struct oxf_tgt_queue_reply *q_reply;
 
     capsule->type = OXF_CQE_BYTE;
+
+    #if OXF_PROTOCOL == OXF_ROCE
+    capsule->size = (reply->is_write) ? OXF_FAB_CQE_SZ :
+                                         OXF_FAB_CQE_SZ;
+    #else
     capsule->size = (reply->is_write) ? OXF_FAB_CQE_SZ :
                                          OXF_FAB_CQE_SZ + reply->data_sz;
+    #endif
+
     memcpy (&capsule->cqc.cqe, cqe, sizeof (struct nvme_cqe));
 
     /* Read: data has been copied to cq_capsule via "DMA" by bottom layers */
