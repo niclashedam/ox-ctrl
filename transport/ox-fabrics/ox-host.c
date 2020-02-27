@@ -546,6 +546,9 @@ int oxf_host_create_queue (uint16_t qid)
         fabrics.queues[qid].cmds[ent_i].cid = (qid * OXF_QUEUE_SIZE) + ent_i;
         TAILQ_INSERT_TAIL(&fabrics.queues[qid].cmd_fh,
                                        &fabrics.queues[qid].cmds[ent_i], entry);
+
+        fabrics.client->ops->map(&fabrics.queues[qid].cmds[ent_i].capsule.sqc.data, OXF_SQC_MAX_DATA);
+        fabrics.client->ops->map(&fabrics.queues[qid].cmds[ent_i].capsule.cqc.data, OXF_CQC_MAX_DATA);
     }
 
     fabrics.n_queues++;

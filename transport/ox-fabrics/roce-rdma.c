@@ -32,28 +32,48 @@
 #include <tcp.h>
 #include <ox-fabrics.h>
 
+#include <roce-rdma.h>
 #include <rdma/rsocket.h>
 
 void *oxf_roce_rdma_handler(void *p){
     struct oxf_rdma_state *state = (struct oxf_rdma_state *) p;
     struct oxf_rdma_request request;
 
+    if(state->listen){
+        log_info("[ox-fabrics (RDMA): Waiting for RDMA client to connect.]");
+        state->con_fd = raccept(state->sock_fd, (struct sockaddr *) &state->inet_addr, &state->len);
+    }
+
+    if (state->con_fd == -1) {
+        log_err ("[ox-fabrics (RDMA): Socket accept failure. Data path will be unavailable.]");
+        return state;
+    }
+
+    *state->is_running = 1;
+
+    for(size_t i = 0; i < state->buffer_count; i++){
+      state->buffers[i].offset = riomap(state->con_fd, state->buffers[i].buffer, state->buffers[i].size, PROT_WRITE, 0, -1);
+    }
+
+    log_info("[ox-fabrics (RDMA): RDMA connection established.]");
+
+    printf("Handler started! :-)\n");
+
     while(*state->is_running){
         int bytes = rrecv(state->con_fd, &request , sizeof(request), MSG_WAITALL);
 
-        printf("Received REQ");
+        printf("Received REQ with %d bytes\n", bytes);
 
         if(bytes == 0) break;
 
         if(request.direction == OXF_RDMA_CONFIRM){
-          printf("Was confirm");
-          int *fulfilled = (int *) request.fulfilment_bit;
-          *fulfilled = 1;
+          printf("Was confirm\n");
+          *request.fulfilment_bit = 1;
           continue;
         }
 
-        printf("Was pull request");
-        riowrite(state->con_fd, (void *) request.remote_addr, request.size, request.local_addr, 0);
+        printf("Was push request from %p (L) to %p (R) \n", request.remote_addr, request.local_addr);
+        riowrite(state->con_fd, request.remote_addr, request.size, p2o(request.local_addr), 0);
         request.direction = OXF_RDMA_CONFIRM;
 
         rsend(state->con_fd, &request, sizeof(request), 0);
@@ -67,24 +87,34 @@ void *oxf_roce_rdma_handler(void *p){
 int oxf_roce_rdma (int con_fd, void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
     struct oxf_rdma_request request;
     request.direction = dir == NVM_DMA_TO_HOST ? OXF_RDMA_PUSH : OXF_RDMA_PULL;
-    request.local_addr = (off_t) buf;
-    request.remote_addr = (off_t) prp;
+    request.local_addr = buf;
+    request.remote_addr = (void *) prp;
     request.size = size;
 
     printf("Hej\n");
 
-    if (con_fd < 1) return -1;
+    if (con_fd < 1){
+      log_err ("[ox-fabrics (RDMA): Data sent over unestablished connection.]");
+      return -1;
+    }
+
     if (request.direction == OXF_RDMA_PUSH){
-      riowrite(con_fd, (void *) request.local_addr, request.size, request.remote_addr, 0);
+      printf("Pushing to %p\n", request.remote_addr);
+      riowrite(con_fd, (void *) request.local_addr, request.size, p2o(request.remote_addr), 0);
       return 1;
     }
 
     int fulfilled = 0;
-    request.fulfilment_bit = (off_t) &fulfilled;
+    request.fulfilment_bit = &fulfilled;
 
+    printf("Sending push request of from %p (L) to %p (R)\n", request.local_addr, request.remote_addr);
     rsend(con_fd, &request, sizeof(request), 0);
 
+    printf("Waiting for push to complete\n");
     while (!fulfilled){ usleep(1000); }
+    printf("Push completed. Yay!\n");
 
     return 1;
 }
+
+off_t p2o(void *p){ return (off_t) p; }

@@ -349,12 +349,8 @@ void oxf_tcp_server_exit (struct oxf_server *server)
     ox_free (server, OX_MEM_TCP_SERVER);
 }
 
-off_t oxf_tcp_server_map (struct oxf_server *server, uint16_t cid, void *buffer, uint32_t size){
-  return 0; // TCP does not support RDMA
-}
-
-int oxf_tcp_server_unmap (struct oxf_server *server, uint16_t cid, void *buffer, uint32_t size){
-  return 0; // TCP does not support RDMA
+void oxf_tcp_server_map (void *buffer, uint32_t size){
+  return; // TCP does not support RDMA
 }
 
 int oxf_tcp_server_rdma_req (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
@@ -376,7 +372,6 @@ struct oxf_server_ops oxf_tcp_srv_ops = {
     .reply   = oxf_tcp_server_reply,
 
     .map     = oxf_tcp_server_map,
-    .unmap   = oxf_tcp_server_unmap,
     .rdma    = oxf_tcp_server_rdma_req
 };
 

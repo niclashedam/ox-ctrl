@@ -342,10 +342,8 @@ static int oxf_create_queue (uint16_t qid)
     for (ent_i = 0; ent_i < OXF_MAX_ENT; ent_i++) {
         reply->reply_ent[ent_i].type = OXF_PROTOCOL;
         TAILQ_INSERT_TAIL(&reply->reply_fh, &reply->reply_ent[ent_i], entry);
-        if(OXF_PROTOCOL == OXF_ROCE){
-	    // riomap(con->sock_fd, &reply->reply_ent[ent_i].capsule.data, OXF_SQC_MAX_DATA, PROT_WRITE, 0, -1);
-            // riomap(con->sock_fd, &reply->reply_ent[ent_i].cq_capsule.cqc.data, OXF_CQC_MAX_DATA, PROT_WRITE, 0, -1);
-        }
+        s->ops->map(&reply->reply_ent[ent_i].capsule.data, OXF_SQC_MAX_DATA);
+	s->ops->map(&reply->reply_ent[ent_i].cq_capsule.cqc.data, OXF_CQC_MAX_DATA);
     }
 
     reply->in_use = 1;
