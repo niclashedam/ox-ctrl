@@ -49,7 +49,7 @@ void *oxf_roce_rdma_handler(void *p){
         return state;
     }
 
-    *state->is_running = 1;
+    log_info("[ox-fabrics (RDMA): Synchronizing %d RDMA buffers.]", state->buffer_count);
 
     for(size_t i = 0; i < state->buffer_count; i++){
       state->buffers[i].offset = riomap(state->con_fd, state->buffers[i].buffer, state->buffers[i].size, PROT_WRITE, 0, -1);
@@ -58,6 +58,8 @@ void *oxf_roce_rdma_handler(void *p){
     log_info("[ox-fabrics (RDMA): RDMA connection established.]");
 
     printf("Handler started! :-)\n");
+
+    *state->is_running = 1;
 
     while(*state->is_running){
         int bytes = rrecv(state->con_fd, &request , sizeof(request), MSG_WAITALL);
@@ -72,7 +74,7 @@ void *oxf_roce_rdma_handler(void *p){
           continue;
         }
 
-        printf("Was push request from %p (L) to %p (R) \n", request.remote_addr, request.local_addr);
+        printf("Was push request from %p (L) -> %p (R) \n", request.remote_addr, request.local_addr);
         riowrite(state->con_fd, request.remote_addr, request.size, p2o(request.local_addr), 0);
         request.direction = OXF_RDMA_CONFIRM;
 
@@ -99,15 +101,15 @@ int oxf_roce_rdma (int con_fd, void *buf, uint32_t size, uint64_t prp, uint8_t d
     }
 
     if (request.direction == OXF_RDMA_PUSH){
-      printf("Pushing to %p\n", request.remote_addr);
-      riowrite(con_fd, (void *) request.local_addr, request.size, p2o(request.remote_addr), 0);
+      printf("Pushing to %p (L) -> %p (R)\n", request.local_addr, request.remote_addr);
+      riowrite(con_fd, request.local_addr, request.size, p2o(request.remote_addr), 0);
       return 1;
     }
 
     int fulfilled = 0;
     request.fulfilment_bit = &fulfilled;
 
-    printf("Sending push request of from %p (L) to %p (R)\n", request.local_addr, request.remote_addr);
+    printf("Tell remote to push %p (R) -> %p (L)\n", request.remote_addr, request.local_addr);
     rsend(con_fd, &request, sizeof(request), 0);
 
     printf("Waiting for push to complete\n");

@@ -531,14 +531,6 @@ int oxf_host_create_queue (uint16_t qid)
 
     iface_id = qid % fabrics.client->n_ifaces;
 
-    if (!fabrics.client->ops->connect(fabrics.client, qid,
-                    fabrics.client->ifaces[iface_id].addr,
-                    fabrics.client->ifaces[iface_id].port, oxf_host_rcv_fn))
-        goto DESTROY_SPIN;
-
-    /* Server needs some time to complete the connection */
-    usleep (50000);
-
     TAILQ_INIT(&fabrics.queues[qid].cmd_fh);
     TAILQ_INIT(&fabrics.queues[qid].cmd_uh);
     for (ent_i = 0; ent_i < OXF_QUEUE_SIZE; ent_i++) {
@@ -550,6 +542,17 @@ int oxf_host_create_queue (uint16_t qid)
         fabrics.client->ops->map(&fabrics.queues[qid].cmds[ent_i].capsule.sqc.data, OXF_SQC_MAX_DATA);
         fabrics.client->ops->map(&fabrics.queues[qid].cmds[ent_i].capsule.cqc.data, OXF_CQC_MAX_DATA);
     }
+
+    fabrics.n_queues++;
+    fabrics.queues[qid].in_use = 1;
+
+    if (!fabrics.client->ops->connect(fabrics.client, qid,
+                    fabrics.client->ifaces[iface_id].addr,
+                    fabrics.client->ifaces[iface_id].port, oxf_host_rcv_fn))
+        goto DESTROY_SPIN;
+
+    /* Server needs some time to complete the connection */
+    usleep (50000);
 
     fabrics.n_queues++;
     fabrics.queues[qid].in_use = 1;

@@ -74,7 +74,7 @@ static void nvme_test_callback (void *ctx, uint16_t status)
     pthread_spin_unlock (&done_spin);
 
     if (done % NVME_TEST_LBA_IO * 400 == 0)
-        nvme_test_print_runtime ();
+        //nvme_test_print_runtime ();
           
     if (done == lastlba - firstlba + 1) {
         GET_NANOSECONDS(end,ts_e);
