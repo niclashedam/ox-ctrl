@@ -318,8 +318,14 @@ struct nvme_sgl_desc *oxf_host_alloc_sgl (uint8_t **buf_list, uint32_t *buf_sz,
 
     for (ent_i = 0; ent_i < entries; ent_i++) {
         desc[ent_i].type        = NVME_SGL_DATA_BLOCK;
-        desc[ent_i].subtype     = NVME_SGL_SUB_ADDR;
-        desc[ent_i].data.addr   = (uint64_t) buf_list[ent_i];
+
+#if RDMA
+	desc[ent_i].subtype     = NVME_SGL_SUB_RDMA;
+#else
+	desc[ent_i].subtype     = NVME_SGL_SUB_ADDR;
+#endif
+
+	desc[ent_i].data.addr   = (uint64_t) buf_list[ent_i];
         desc[ent_i].data.length = buf_sz[ent_i];
     }
 
@@ -345,9 +351,15 @@ struct nvme_sgl_desc *oxf_host_alloc_keyed_sgl (uint8_t **buf_list,
                                                          ((uint64_t) 1 << 40));
             return NULL;
         }
-        desc[ent_i].type         = NVME_SGL_5BYTE_KEYS;
-        desc[ent_i].subtype      = NVME_SGL_SUB_ADDR;
-        desc[ent_i].keyed5.addr   = (uint64_t) buf_list[ent_i];
+	desc[ent_i].type         = NVME_SGL_5BYTE_KEYS;
+
+#if RDMA
+	desc[ent_i].subtype      = NVME_SGL_SUB_RDMA;
+#else
+	desc[ent_i].subtype      = NVME_SGL_SUB_ADDR;
+#endif
+
+	desc[ent_i].keyed5.addr   = (uint64_t) buf_list[ent_i];
         desc[ent_i].keyed5.length = buf_sz[ent_i];
         memcpy (desc[ent_i].keyed5.key, &keys[ent_i], 5);
     }

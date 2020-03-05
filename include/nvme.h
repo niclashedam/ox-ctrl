@@ -262,7 +262,8 @@ enum NvmeSGLTypes {
 
 enum NvmeSGLSubtypes {
     NVME_SGL_SUB_ADDR      = 0x0,
-    NVME_SGL_SUB_OFFSET    = 0x1
+    NVME_SGL_SUB_OFFSET    = 0x1,
+    NVME_SGL_SUB_RDMA      = 0xA
 };
 
 #define NVME_CC_EN(cc)     ((cc >> CC_EN_SHIFT)     & CC_EN_MASK)
