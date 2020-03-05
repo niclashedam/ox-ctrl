@@ -88,7 +88,7 @@ void *oxf_roce_rdma_handler(void *p){
 
 int oxf_roce_rdma (int con_fd, void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
     struct oxf_rdma_request request;
-    request.direction = dir == NVM_DMA_TO_HOST ? OXF_RDMA_PUSH : OXF_RDMA_PULL;
+    request.direction = dir;
     request.local_addr = buf;
     request.remote_addr = (void *) prp;
     request.size = size;
