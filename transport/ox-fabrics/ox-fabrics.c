@@ -59,14 +59,22 @@ static struct oxf_tgt_fabrics fabrics;
 extern struct core_struct core;
 extern uint16_t pending_conn;
 
-/* OX Fabrics uses In-capsule data for now, so RDMA is a memory copy */
 int oxf_rdma (void *buf, uint32_t size, uint64_t prp, uint8_t dir)
 {
     switch (dir) {
-        case NVM_DMA_TO_HOST:
+
+#if RDMA
+	case NVM_DMA_TO_HOST:
+            // RDMA PULL (host reads) Copy from BUF into PRP
+        case NVM_DMA_FROM_HOST:
+            // RDMA PUSH (host writes) Copy from PRP into BUF
+#else
+       /* Memory copy is performed if In-capsule data used */
+	case NVM_DMA_TO_HOST:
             memcpy ((void *) prp, buf, size);
         case NVM_DMA_FROM_HOST:
             memcpy (buf, (void *) prp, size);
+#endif
     }
 
     return 0;
@@ -129,6 +137,10 @@ static uint32_t oxf_fabrics_set_sgl (struct nvmef_capsule_sq *capsule,
     uint32_t bytes = 0;
     uint64_t offset;
 
+#if RDMA
+    goto RDMA;
+#endif
+
     if (is_write)
         offset = (uint64_t) capsule->data;
     else
@@ -169,7 +181,7 @@ static uint32_t oxf_fabrics_set_sgl (struct nvmef_capsule_sq *capsule,
                 desc[desc_i].data.addr = offset;
                 offset += desc[desc_i].data.length;
                 bytes += desc[desc_i].data.length;
-        }        
+        }
 
 NEXT:
         desc_i++;
@@ -179,6 +191,9 @@ NEXT:
             break;
     }
 
+#if RDMA
+RDMA:
+#endif
     /* Set in-command SGL entry as Last Segment pointing to the SGL */
     capsule->cmd.sgl.type        = NVME_SGL_LAST_SEGMENT;
     capsule->cmd.sgl.subtype     = NVME_SGL_SUB_ADDR;
