@@ -33,7 +33,7 @@
 
 struct oxf_tgt_reply {
     uint8_t                     type;
-    uint8_t                     cli[1024];
+    uint8_t                     cli[32];
     uint8_t                     is_write;
     uint32_t                    data_sz;
     struct oxf_server_con      *con;
@@ -72,14 +72,8 @@ int oxf_complete (NvmeCqe *cqe, void *ctx)
     struct oxf_tgt_queue_reply *q_reply;
 
     capsule->type = OXF_CQE_BYTE;
-
-    #if OXF_PROTOCOL == OXF_ROCE
-    capsule->size = (reply->is_write) ? OXF_FAB_CQE_SZ :
-                                         OXF_FAB_CQE_SZ;
-    #else
     capsule->size = (reply->is_write) ? OXF_FAB_CQE_SZ :
                                          OXF_FAB_CQE_SZ + reply->data_sz;
-    #endif
 
     memcpy (&capsule->cqc.cqe, cqe, sizeof (struct nvme_cqe));
 
@@ -342,8 +336,6 @@ static int oxf_create_queue (uint16_t qid)
     for (ent_i = 0; ent_i < OXF_MAX_ENT; ent_i++) {
         reply->reply_ent[ent_i].type = OXF_PROTOCOL;
         TAILQ_INSERT_TAIL(&reply->reply_fh, &reply->reply_ent[ent_i], entry);
-        s->ops->map(&reply->reply_ent[ent_i].capsule.data, OXF_SQC_MAX_DATA);
-	s->ops->map(&reply->reply_ent[ent_i].cq_capsule.cqc.data, OXF_CQC_MAX_DATA);
     }
 
     reply->in_use = 1;

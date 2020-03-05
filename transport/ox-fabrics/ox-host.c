@@ -270,13 +270,7 @@ int oxf_host_submit_io (uint16_t qid, struct nvme_cmd *ncmd,
     qcmd->capsule.cqc.cqe.cid = qcmd->cid;
     qcmd->capsule.cqc.cqe.sq_id = qid;
     qcmd->capsule.type = OXF_CMD_BYTE;
-
-    #if OXF_PROTOCOL == OXF_ROCE
     qcmd->capsule.size = OXF_FAB_CMD_SZ + NVMEF_SGL_SZ;
-    #else
-    qcmd->capsule.size = bytes;
-    #endif
-
     qcmd->ctx = ctx;
     qcmd->cb_fn = cb;
     qcmd->mq_req = NULL;
@@ -531,18 +525,6 @@ int oxf_host_create_queue (uint16_t qid)
 
     iface_id = qid % fabrics.client->n_ifaces;
 
-    TAILQ_INIT(&fabrics.queues[qid].cmd_fh);
-    TAILQ_INIT(&fabrics.queues[qid].cmd_uh);
-    for (ent_i = 0; ent_i < OXF_QUEUE_SIZE; ent_i++) {
-        fabrics.queues[qid].cmds[ent_i].qid = qid;
-        fabrics.queues[qid].cmds[ent_i].cid = (qid * OXF_QUEUE_SIZE) + ent_i;
-        TAILQ_INSERT_TAIL(&fabrics.queues[qid].cmd_fh,
-                                       &fabrics.queues[qid].cmds[ent_i], entry);
-
-        fabrics.client->ops->map(&fabrics.queues[qid].cmds[ent_i].capsule.sqc.data, OXF_SQC_MAX_DATA);
-        fabrics.client->ops->map(&fabrics.queues[qid].cmds[ent_i].capsule.cqc.data, OXF_CQC_MAX_DATA);
-    }
-
     fabrics.n_queues++;
     fabrics.queues[qid].in_use = 1;
 
@@ -556,6 +538,15 @@ int oxf_host_create_queue (uint16_t qid)
 
     fabrics.n_queues++;
     fabrics.queues[qid].in_use = 1;
+
+    TAILQ_INIT(&fabrics.queues[qid].cmd_fh);
+    TAILQ_INIT(&fabrics.queues[qid].cmd_uh);
+    for (ent_i = 0; ent_i < OXF_QUEUE_SIZE; ent_i++) {
+        fabrics.queues[qid].cmds[ent_i].qid = qid;
+        fabrics.queues[qid].cmds[ent_i].cid = (qid * OXF_QUEUE_SIZE) + ent_i;
+        TAILQ_INSERT_TAIL(&fabrics.queues[qid].cmd_fh,
+                                       &fabrics.queues[qid].cmds[ent_i], entry);
+    }
 
     if (OXF_HOST_DEBUG)
         printf ("[ox-fabrics: Queue %d created. Connected to %s:%d]\n", qid,

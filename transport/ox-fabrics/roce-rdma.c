@@ -49,12 +49,6 @@ void *oxf_roce_rdma_handler(void *p){
         return state;
     }
 
-    log_info("[ox-fabrics (RDMA): Synchronizing %d RDMA buffers.]", state->buffer_count);
-
-    for(size_t i = 0; i < state->buffer_count; i++){
-      state->buffers[i].offset = riomap(state->con_fd, state->buffers[i].buffer, state->buffers[i].size, PROT_WRITE, 0, -1);
-    }
-
     log_info("[ox-fabrics (RDMA): RDMA connection established.]");
 
     printf("Handler started! :-)\n");
@@ -62,11 +56,24 @@ void *oxf_roce_rdma_handler(void *p){
     *state->is_running = 1;
 
     while(*state->is_running){
-        int bytes = rrecv(state->con_fd, &request , sizeof(request), MSG_WAITALL);
+        while(state->registered_buffers < state->buffer_count){
+          state->buffers[state->registered_buffers].offset =
+            riomap( state->con_fd,
+                    state->buffers[state->registered_buffers].buffer,
+                    state->buffers[state->registered_buffers].size,
+                    PROT_WRITE, 0, -1);
+          state->registered_buffers++;
+        }
+
+        int bytes = rrecv(state->con_fd, &request , sizeof(request), MSG_DONTWAIT);
+
+        /* Timeout */
+        if (bytes < 0) continue;
+
+        /* Client disconnected */
+        if(bytes == 0) break;
 
         printf("Received REQ with %d bytes\n", bytes);
-
-        if(bytes == 0) break;
 
         if(request.direction == OXF_RDMA_CONFIRM){
           printf("Was confirm\n");

@@ -85,8 +85,6 @@ enum oxf_capsule_types {
     OXF_DIS_BYTE    	= 0x2c, /* Disconnect command */
     OXF_CMD_BYTE    	= 0x3c, /* Submission queue entry */
     OXF_CQE_BYTE    	= 0x4c, /* Completion queue entry */
-    OXF_RDMA_PULL_BYTE  = 0x5c, /* Request to pull data from sender */
-    OXF_RDMA_PUSH_BYTE  = 0x6c, /* Request to push data to sender */
 };
 
 #define OXF_CAPSULE_SZ      65504
@@ -121,6 +119,7 @@ struct oxf_rdma_state {
 
   struct oxf_rdma_buffer *buffers;
   int buffer_count;
+  int registered_buffers;
 };
 
 struct oxf_rdma_buffer {
