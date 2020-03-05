@@ -171,14 +171,20 @@ static uint32_t oxf_host_prepare_sq_capsule (struct nvmef_capsule_sq *capsule,
 
             bytes += desc[desc_i].data.length;
 
-            if (bytes > OXF_FAB_CAPS_SZ)
+#if RDMA
+            /* REGISTER THE RDMA BUFFER HERE:
+             * (void *) desc[desc_i].data.addr
+             *          desc[desc_i].data.length */
+#else
+	    if (bytes > OXF_FAB_CAPS_SZ)
                 return bytes;
 
             memcpy (&capsule->data[offset], (void *) desc[desc_i].data.addr,
                                                       desc[desc_i].data.length);
             offset += desc[desc_i].data.length;
+#endif
 
-        } else if ( is_write && (desc[desc_i].type == NVME_SGL_KEYED_DATA) ) {
+	} else if ( is_write && (desc[desc_i].type == NVME_SGL_KEYED_DATA) ) {
             /* Not supported for writes yet */
         } else if ( is_write && (desc[desc_i].type == NVME_SGL_5BYTE_KEYS) ) {
             /* Not supported for writes yet */
@@ -270,7 +276,13 @@ int oxf_host_submit_io (uint16_t qid, struct nvme_cmd *ncmd,
     qcmd->capsule.cqc.cqe.cid = qcmd->cid;
     qcmd->capsule.cqc.cqe.sq_id = qid;
     qcmd->capsule.type = OXF_CMD_BYTE;
+
+#if RDMA
+    qcmd->capsule.size = OXF_FAB_CMD_SZ + NVMEF_SGL_SZ;
+#else
     qcmd->capsule.size = bytes;
+#endif
+
     qcmd->ctx = ctx;
     qcmd->cb_fn = cb;
     qcmd->mq_req = NULL;
