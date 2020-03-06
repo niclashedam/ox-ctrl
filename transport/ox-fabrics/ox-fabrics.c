@@ -65,9 +65,12 @@ int oxf_rdma (void *buf, uint32_t size, uint64_t prp, uint8_t dir)
 
 #if RDMA
 	case NVM_DMA_TO_HOST:
-            // RDMA PULL (host reads) Copy from BUF into PRP
+            // RDMA PULL (host reads)
+	    // 1) rwrite from BUF into PRP
         case NVM_DMA_FROM_HOST:
             // RDMA PUSH (host writes) Copy from PRP into BUF
+	    // 1) push
+	    // 2) wait until rdma is completed (Niclas protocol)
 #else
        /* Memory copy is performed if In-capsule data used */
 	case NVM_DMA_TO_HOST:
@@ -87,8 +90,14 @@ int oxf_complete (NvmeCqe *cqe, void *ctx)
     struct oxf_tgt_queue_reply *q_reply;
 
     capsule->type = OXF_CQE_BYTE;
+
+#if RDMA
+    capsule->size = OXF_FAB_CQE_SZ;
+#else
     capsule->size = (reply->is_write) ? OXF_FAB_CQE_SZ :
                                          OXF_FAB_CQE_SZ + reply->data_sz;
+#endif
+
     memcpy (&capsule->cqc.cqe, cqe, sizeof (struct nvme_cqe));
 
     /* Read: data has been copied to cq_capsule via "DMA" by bottom layers */
@@ -295,13 +304,13 @@ static void oxf_fabrics_rcv_fn (uint32_t size, void *arg, void *recv_cli)
                     break;
 
                 }
-                
+
                 break;
             }
 
             if (!retry)
                 log_err ("[ox-fabrics: Capsule not processed.]\n");
-            
+
             break;
         case OXF_RDMA_BYTE:
             // RDMA not implemented
