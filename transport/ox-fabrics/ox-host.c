@@ -108,37 +108,49 @@ static void oxf_host_rcv_fn (uint32_t size, void *arg)
 
             memcpy (&qcmd->capsule.cqc, &capsule->cqc, size);
 
-            /* Reads: Copy data directly to the user */
-            if (!qcmd->is_write) {
-                desc = (NvmeSGLDesc *) qcmd->capsule.sqc.sgl;
-                offset = qcmd->capsule.cqc.data;
+#if !(RMDA) // IF NOT RDMA
+	    if (qcmd->is_write)
+		goto WRITES;
+#endif
 
-                while (oxf_get_desc_length (&desc[desc_i])) {
+            desc = (NvmeSGLDesc *) qcmd->capsule.sqc.sgl;
+            offset = qcmd->capsule.cqc.data;
 
-                    if (desc[desc_i].type == NVME_SGL_BIT_BUCKET)
-                        goto NEXT;
+            while (oxf_get_desc_length (&desc[desc_i])) {
 
-                    if ( (desc[desc_i].type != NVME_SGL_DATA_BLOCK) &&
-                         (desc[desc_i].type != NVME_SGL_KEYED_DATA) &&
-                         (desc[desc_i].type != NVME_SGL_5BYTE_KEYS)) {
-                        log_err ("[ox-fabrics: Next Segment descriptors "
-                                                            "NOT supported.]");
-                        return;
-                    }
+                if (desc[desc_i].type == NVME_SGL_BIT_BUCKET)
+                    goto NEXT;
 
-                    length = oxf_get_desc_length (&desc[desc_i]);
-                    memcpy ((void *) desc[desc_i].data.addr, offset, length);
-                    offset += length;
+                if ( (desc[desc_i].type != NVME_SGL_DATA_BLOCK) &&
+                     (desc[desc_i].type != NVME_SGL_KEYED_DATA) &&
+                     (desc[desc_i].type != NVME_SGL_5BYTE_KEYS)) {
+                    log_err ("[ox-fabrics: Next Segment descriptors "
+                                                        "NOT supported.]");
+                    return;
+                }
+
+                length = oxf_get_desc_length (&desc[desc_i]);
+
+#ifdef RDMA
+	        /* UNMAP RDMA buffers here: (void *) desc[desc_i].data.addr
+		 *   			     length */
+#else
+		/* Reads: Copy data directly to the user */
+		if (!qcmd->is_write) {
+		    memcpy ((void *) desc[desc_i].data.addr, offset, length);
+		    offset += length;
+		}
+#endif
 
 NEXT:
-                    desc_i++;
+                desc_i++;
 
-                    /* Check SGL capsule boundary */
-                    if (desc_i * sizeof (struct NvmeSGLDesc) >= NVMEF_SGL_SZ)
-                        break;
-                }
+                /* Check SGL capsule boundary */
+                if (desc_i * sizeof (struct NvmeSGLDesc) >= NVMEF_SGL_SZ)
+                    break;
             }
 
+WRITES:
             ox_mq_complete_req (fabrics.queues[sqid].mq, qcmd->mq_req);
 
             break;
