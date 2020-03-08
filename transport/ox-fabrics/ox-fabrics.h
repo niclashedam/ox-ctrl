@@ -121,6 +121,7 @@ struct oxf_rdma_state {
 
   struct oxf_rdma_buffer *buffers;
   int buffer_count;
+  int registered_buffers;
 };
 
 struct oxf_rdma_buffer {

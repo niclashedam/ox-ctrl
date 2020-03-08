@@ -62,7 +62,26 @@ extern uint16_t pending_conn;
 
 int oxf_rdma (void *buf, uint32_t size, uint64_t prp, uint8_t dir)
 {
-    return fabrics.server->ops->rdma(buf, size, prp, dir);
+    switch (dir) {
+
+#if RDMA
+	case NVM_DMA_TO_HOST:
+            // RDMA PULL (host reads)
+	    // 1) rwrite from BUF into PRP
+        case NVM_DMA_FROM_HOST:
+            // RDMA PUSH (host writes) Copy from PRP into BUF
+	    // 1) push
+	    // 2) wait until rdma is completed (Niclas protocol)
+#else
+       /* Memory copy is performed if In-capsule data used */
+	case NVM_DMA_TO_HOST:
+            memcpy ((void *) prp, buf, size);
+        case NVM_DMA_FROM_HOST:
+            memcpy (buf, (void *) prp, size);
+#endif
+    }
+
+    return 0;
 }
 
 int oxf_complete (NvmeCqe *cqe, void *ctx)
@@ -73,13 +92,12 @@ int oxf_complete (NvmeCqe *cqe, void *ctx)
 
     capsule->type = OXF_CQE_BYTE;
 
-    #if OXF_PROTOCOL == OXF_ROCE
-    capsule->size = (reply->is_write) ? OXF_FAB_CQE_SZ :
-                                         OXF_FAB_CQE_SZ;
-    #else
+#if RDMA
+    capsule->size = OXF_FAB_CQE_SZ;
+#else
     capsule->size = (reply->is_write) ? OXF_FAB_CQE_SZ :
                                          OXF_FAB_CQE_SZ + reply->data_sz;
-    #endif
+#endif
 
     memcpy (&capsule->cqc.cqe, cqe, sizeof (struct nvme_cqe));
 
@@ -128,6 +146,10 @@ static uint32_t oxf_fabrics_set_sgl (struct nvmef_capsule_sq *capsule,
     uint16_t desc_i = 0;
     uint32_t bytes = 0;
     uint64_t offset;
+
+#if RDMA
+    goto RDMA;
+#endif
 
     if (is_write)
         offset = (uint64_t) capsule->data;
@@ -179,6 +201,9 @@ NEXT:
             break;
     }
 
+#if RDMA
+RDMA:
+#endif
     /* Set in-command SGL entry as Last Segment pointing to the SGL */
     capsule->cmd.sgl.type        = NVME_SGL_LAST_SEGMENT;
     capsule->cmd.sgl.subtype     = NVME_SGL_SUB_ADDR;
@@ -288,6 +313,9 @@ static void oxf_fabrics_rcv_fn (uint32_t size, void *arg, void *recv_cli)
             if (!retry)
                 log_err ("[ox-fabrics: Capsule not processed.]\n");
 
+            break;
+        case OXF_RDMA_BYTE:
+            // RDMA not implemented
             break;
         default:
             log_err ("[ox-fabrics: Unknown capsule: %x.]\n", capsule->type);

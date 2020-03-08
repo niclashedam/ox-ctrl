@@ -67,7 +67,7 @@ void nvmeh_callback (void *ctx, struct nvme_cqe *cqe)
                     first_status = nvmeh_ctx->cmd_status[cmd_i].status;
                     break;
                 }
-            }                
+            }
         }
         nvmeh_ctx->user_cb (nvmeh_ctx->user_ctx, first_status);
         (nvmeh_ctx->is_write) ? nvmeh_ctxw_put (nvmeh_ctx->host, nvmeh_ctx) :

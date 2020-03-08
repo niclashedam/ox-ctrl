@@ -45,7 +45,8 @@ static int is_running;
 struct oxf_rdma_state state;
 pthread_t handler;
 
-struct oxf_rdma_buffer buffers[OXF_QUEUE_SIZE * OXF_SERVER_MAX_CON];
+// TODO: How many max queues?
+struct oxf_rdma_buffer buffers[OXF_QUEUE_SIZE * OXF_SERVER_MAX_CON * 32];
 
 struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
                                 uint16_t cid, const char *addr, uint16_t port)
@@ -88,6 +89,7 @@ struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
     state.is_running = &is_running;
     state.listen = 1;
     state.buffers = buffers;
+    state.registered_buffers = 0;
 
     pthread_create(&handler, NULL, &oxf_roce_rdma_handler, &state);
     return oxf_tcp_server_bind(server, cid, addr, port);

@@ -189,10 +189,21 @@ static void volt_free_dma_buf (void)
 {
     int slots;
 
-    for (slots = 0; slots < VOLT_DMA_SLOT_INDEX; slots++)
-        volt_free (dma_buf[slots], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
+    for (slots = 0; slots < VOLT_DMA_SLOT_INDEX; slots++) {
+
+#if RDMA
+	/* UNMAP RDMA BUFFERS HERE: dma_buf[slots] */
+#endif
+
+	volt_free (dma_buf[slots], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
+    }
 
     volt_free (dma_buf, sizeof (void *) * VOLT_DMA_SLOT_INDEX);
+
+#if RDMA
+    /* UNMAP RDMA BUFFER HERE: volt->edma */
+#endif
+
     volt_free (volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
 }
 
@@ -301,6 +312,10 @@ static int volt_init_dma_buf (void)
     if (!volt->edma)
         return -1;
 
+#if RDMA
+    /* MAP RDMA BUFFERS HERE: volt->edma, size VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE */
+#endif
+
     dma_buf = volt_alloc(sizeof (void *) * VOLT_DMA_SLOT_INDEX);
     if (!dma_buf)
         goto FREE;
@@ -310,16 +325,32 @@ static int volt_init_dma_buf (void)
         if (!dma_buf[slots_i])
             goto FREE_SLOTS;
         slots++;
+
+#if RDMA
+	/* MAP RDMA BUFFERS HERE: dma_buf[slots_i], size VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE */
+#endif
     }
 
     return 0;
 
 FREE_SLOTS:
-        for (slots_i = 0; slots_i < slots; slots_i++)
-            volt_free (dma_buf[slots_i], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
-        volt_free (dma_buf, sizeof (void *) * VOLT_DMA_SLOT_INDEX);
+    while (slots_i) {
+	slots_i--;
+        volt_free (dma_buf[slots_i], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
+
+#if RDMA
+	/* UNMAP RDMA BUFFERS HERE: dma_buf[slots_i] */
+#endif
+    }
+    volt_free (dma_buf, sizeof (void *) * VOLT_DMA_SLOT_INDEX);
 FREE:
+
+#if RDMA
+    /* UNMAP RDMA BUFFERS HERE: volt->edma */
+#endif
+
     volt_free (volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
+
     return -1;
 }
 
@@ -822,7 +853,7 @@ static void volt_exit (struct nvm_mmgr *mmgr)
         printf(" [volt: Flushing disk...]\n");
         if (volt_disk_flush ())
             printf (" [volt: Disk flush FAILED.]\n");
-    }    
+    }
 
     volt_clean_mem();
     volt->status.active = 0;
