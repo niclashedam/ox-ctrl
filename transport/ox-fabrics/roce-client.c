@@ -40,9 +40,6 @@ static int is_running;
 struct oxf_rdma_state state;
 pthread_t handler;
 
-// TODO: How many max queues?
-struct oxf_rdma_buffer buffers[OXF_QUEUE_SIZE * OXF_CLIENT_MAX_CON * 32];
-
 static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client,
        uint16_t cid, const char *addr, uint16_t port, oxf_rcv_reply_fn *recv_fn)
 {
@@ -61,7 +58,7 @@ static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client
     inet_addr.sin_port = htons(RDMA_PORT);
     inet_aton(RDMA_ADDR, &inet_addr.sin_addr);
 
-    int RIOs = OXF_QUEUE_SIZE * OXF_CLIENT_MAX_CON;
+    int RIOs = 64;
     rsetsockopt(sock_fd, SOL_RDMA, RDMA_IOMAPSIZE, (void *) &RIOs, sizeof RIOs);
 
     if ( rconnect(sock_fd, (const struct sockaddr *) &inet_addr, len) < 0){
@@ -78,8 +75,6 @@ static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client
     state.con_fd = sock_fd; // bottom up because we are a client
     state.listen = 0;
     state.is_running = &is_running;
-    state.buffers = buffers;
-    state.registered_buffers = 0;
 
     pthread_create(&handler, NULL, &oxf_roce_rdma_handler, &state);
 
@@ -111,11 +106,11 @@ void oxf_roce_client_exit (struct oxf_client *client)
 }
 
 void oxf_roce_client_map (void *buffer, uint32_t size){
-    struct oxf_rdma_buffer buf;
-    buf.buffer = buffer;
-    buf.size = size;
-    printf("Registering %p\n", buffer);
-    buffers[state.buffer_count++] = buf;
+  riomap(state.con_fd, buffer, size, PROT_WRITE, 0, -1);
+}
+
+void oxf_roce_client_unmap (void *buffer, uint32_t size){
+  riounmap(state.con_fd, buffer, size);
 }
 
 int oxf_roce_client_rdma_req (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {

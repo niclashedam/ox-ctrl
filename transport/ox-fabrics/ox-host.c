@@ -183,7 +183,7 @@ static uint32_t oxf_host_prepare_sq_capsule (struct nvmef_capsule_sq *capsule,
 
             bytes += desc[desc_i].data.length;
 
-#if RDMA
+#if OXF_PROTOCOL == OXF_RCE
             /* REGISTER THE RDMA BUFFER HERE:
              * (void *) desc[desc_i].data.addr
              *          desc[desc_i].data.length */
@@ -289,7 +289,7 @@ int oxf_host_submit_io (uint16_t qid, struct nvme_cmd *ncmd,
     qcmd->capsule.cqc.cqe.sq_id = qid;
     qcmd->capsule.type = OXF_CMD_BYTE;
 
-#if RDMA
+#if OXF_PROTOCOL == OXF_RCE
     qcmd->capsule.size = OXF_FAB_CMD_SZ + NVMEF_SGL_SZ;
 #else
     qcmd->capsule.size = bytes;
@@ -331,7 +331,7 @@ struct nvme_sgl_desc *oxf_host_alloc_sgl (uint8_t **buf_list, uint32_t *buf_sz,
     for (ent_i = 0; ent_i < entries; ent_i++) {
         desc[ent_i].type        = NVME_SGL_DATA_BLOCK;
 
-#if RDMA
+#if OXF_PROTOCOL == OXF_RCE
 	desc[ent_i].subtype     = NVME_SGL_SUB_RDMA;
 #else
 	desc[ent_i].subtype     = NVME_SGL_SUB_ADDR;
@@ -365,7 +365,7 @@ struct nvme_sgl_desc *oxf_host_alloc_keyed_sgl (uint8_t **buf_list,
         }
 	desc[ent_i].type         = NVME_SGL_5BYTE_KEYS;
 
-#if RDMA
+#if OXF_PROTOCOL == OXF_RCE
 	desc[ent_i].subtype      = NVME_SGL_SUB_RDMA;
 #else
 	desc[ent_i].subtype      = NVME_SGL_SUB_ADDR;

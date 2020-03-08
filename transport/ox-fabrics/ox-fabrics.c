@@ -64,7 +64,7 @@ int oxf_rdma (void *buf, uint32_t size, uint64_t prp, uint8_t dir)
 {
     switch (dir) {
 
-#if RDMA
+#if OXF_PROTOCOL == OXF_RCE
 	case NVM_DMA_TO_HOST:
             // RDMA PULL (host reads)
 	    // 1) rwrite from BUF into PRP
@@ -92,7 +92,7 @@ int oxf_complete (NvmeCqe *cqe, void *ctx)
 
     capsule->type = OXF_CQE_BYTE;
 
-#if RDMA
+#if OXF_PROTOCOL == OXF_RCE
     capsule->size = OXF_FAB_CQE_SZ;
 #else
     capsule->size = (reply->is_write) ? OXF_FAB_CQE_SZ :
@@ -147,7 +147,7 @@ static uint32_t oxf_fabrics_set_sgl (struct nvmef_capsule_sq *capsule,
     uint32_t bytes = 0;
     uint64_t offset;
 
-#if RDMA
+#if OXF_PROTOCOL == OXF_RCE
     goto RDMA;
 #endif
 
@@ -201,7 +201,7 @@ NEXT:
             break;
     }
 
-#if RDMA
+#if OXF_PROTOCOL == OXF_RCE
 RDMA:
 #endif
     /* Set in-command SGL entry as Last Segment pointing to the SGL */
@@ -314,9 +314,9 @@ static void oxf_fabrics_rcv_fn (uint32_t size, void *arg, void *recv_cli)
                 log_err ("[ox-fabrics: Capsule not processed.]\n");
 
             break;
-        case OXF_RDMA_BYTE:
-            // RDMA not implemented
-            break;
+        // case OXF_RDMA_BYTE:
+        //    // RDMA not implemented
+        //    break;
         default:
             log_err ("[ox-fabrics: Unknown capsule: %x.]\n", capsule->type);
             break;

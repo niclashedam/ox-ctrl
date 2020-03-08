@@ -56,15 +56,6 @@ void *oxf_roce_rdma_handler(void *p){
     *state->is_running = 1;
 
     while(*state->is_running){
-        while(state->registered_buffers < state->buffer_count){
-          state->buffers[state->registered_buffers].offset =
-            riomap( state->con_fd,
-                    state->buffers[state->registered_buffers].buffer,
-                    state->buffers[state->registered_buffers].size,
-                    PROT_WRITE, 0, -1);
-          state->registered_buffers++;
-        }
-
         int bytes = rrecv(state->con_fd, &request , sizeof(request), MSG_DONTWAIT);
 
         /* Timeout */

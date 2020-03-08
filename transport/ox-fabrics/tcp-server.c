@@ -353,6 +353,10 @@ void oxf_tcp_server_map (void *buffer, uint32_t size){
   return; // TCP does not support RDMA
 }
 
+void oxf_tcp_server_unmap (void *buffer, uint32_t size){
+  return; // TCP does not support RDMA
+}
+
 int oxf_tcp_server_rdma_req (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
     switch (dir) {
         case NVM_DMA_TO_HOST:
@@ -372,6 +376,7 @@ struct oxf_server_ops oxf_tcp_srv_ops = {
     .reply   = oxf_tcp_server_reply,
 
     .map     = oxf_tcp_server_map,
+    .unmap   = oxf_tcp_server_unmap,
     .rdma    = oxf_tcp_server_rdma_req
 };
 
