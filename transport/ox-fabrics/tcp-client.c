@@ -207,28 +207,10 @@ void oxf_tcp_client_exit (struct oxf_client *client)
     free (client);
 }
 
-void oxf_tcp_client_map (void *buffer, uint32_t size){
-  return; // TCP does not support RDMA
-}
-
-int oxf_tcp_client_rdma_req (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
-    switch (dir) {
-        case NVM_DMA_TO_HOST:
-            memcpy ((void *) prp, buf, size);
-        case NVM_DMA_FROM_HOST:
-            memcpy (buf, (void *) prp, size);
-    }
-
-    return 0;
-}
-
 struct oxf_client_ops oxf_tcp_cli_ops = {
     .connect    = oxf_tcp_client_connect,
     .disconnect = oxf_tcp_client_disconnect,
     .send       = oxf_tcp_client_send,
-
-    .map     = oxf_tcp_client_map,
-    .rdma    = oxf_tcp_client_rdma_req
 };
 
 struct oxf_client *oxf_tcp_client_init (void)

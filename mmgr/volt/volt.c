@@ -1,11 +1,11 @@
 /* OX: Open-Channel NVM Express SSD Controller
- * 
+ *
  *  - VOLT: Volatile storage and media manager
  *
  * Copyright 2017 IT University of Copenhagen
- * 
+ *
  * Written by Ivan Luiz Picoli <ivpi@itu.dk>
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -189,10 +189,21 @@ static void volt_free_dma_buf (void)
 {
     int slots;
 
-    for (slots = 0; slots < VOLT_DMA_SLOT_INDEX; slots++)
-        volt_free (dma_buf[slots], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
+    for (slots = 0; slots < VOLT_DMA_SLOT_INDEX; slots++) {
+
+#if OXF_PROTOCOL == OXF_ROCE
+	/* UNMAP RDMA BUFFERS HERE: dma_buf[slots] */
+#endif
+
+	volt_free (dma_buf[slots], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
+    }
 
     volt_free (dma_buf, sizeof (void *) * VOLT_DMA_SLOT_INDEX);
+
+#if OXF_PROTOCOL == OXF_ROCE
+    /* UNMAP RDMA BUFFER HERE: volt->edma */
+#endif
+
     volt_free (volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
 }
 
@@ -301,6 +312,10 @@ static int volt_init_dma_buf (void)
     if (!volt->edma)
         return -1;
 
+#if OXF_PROTOCOL == OXF_ROCE
+    /* MAP RDMA BUFFERS HERE: volt->edma, size VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE */
+#endif
+
     dma_buf = volt_alloc(sizeof (void *) * VOLT_DMA_SLOT_INDEX);
     if (!dma_buf)
         goto FREE;
@@ -310,16 +325,32 @@ static int volt_init_dma_buf (void)
         if (!dma_buf[slots_i])
             goto FREE_SLOTS;
         slots++;
+
+#if OXF_PROTOCOL == OXF_ROCE
+	/* MAP RDMA BUFFERS HERE: dma_buf[slots_i], size VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE */
+#endif
     }
 
     return 0;
 
 FREE_SLOTS:
-        for (slots_i = 0; slots_i < slots; slots_i++)
-            volt_free (dma_buf[slots_i], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
-        volt_free (dma_buf, sizeof (void *) * VOLT_DMA_SLOT_INDEX);
+    while (slots_i) {
+	slots_i--;
+        volt_free (dma_buf[slots_i], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
+
+#if OXF_PROTOCOL == OXF_ROCE
+	/* UNMAP RDMA BUFFERS HERE: dma_buf[slots_i] */
+#endif
+    }
+    volt_free (dma_buf, sizeof (void *) * VOLT_DMA_SLOT_INDEX);
 FREE:
+
+#if OXF_PROTOCOL == OXF_ROCE
+    /* UNMAP RDMA BUFFERS HERE: volt->edma */
+#endif
+
     volt_free (volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
+
     return -1;
 }
 
@@ -731,7 +762,7 @@ struct ox_mq_config volt_mq = {
 /* DEBUG (disabled): Thread to show multi-queue statistics */
 /*static void *volt_queue_show (void *arg)
 {
-    
+
     while (1) {
         usleep (200000);
         ox_mq_show_stats(volt->mq);
@@ -822,7 +853,7 @@ static void volt_exit (struct nvm_mmgr *mmgr)
         printf(" [volt: Flushing disk...]\n");
         if (volt_disk_flush ())
             printf (" [volt: Disk flush FAILED.]\n");
-    }    
+    }
 
     volt_clean_mem();
     volt->status.active = 0;

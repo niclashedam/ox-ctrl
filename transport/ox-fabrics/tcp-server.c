@@ -349,30 +349,12 @@ void oxf_tcp_server_exit (struct oxf_server *server)
     ox_free (server, OX_MEM_TCP_SERVER);
 }
 
-void oxf_tcp_server_map (void *buffer, uint32_t size){
-  return; // TCP does not support RDMA
-}
-
-int oxf_tcp_server_rdma_req (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
-    switch (dir) {
-        case NVM_DMA_TO_HOST:
-            memcpy ((void *) prp, buf, size);
-        case NVM_DMA_FROM_HOST:
-            memcpy (buf, (void *) prp, size);
-    }
-
-    return 0;
-}
-
 struct oxf_server_ops oxf_tcp_srv_ops = {
     .bind    = oxf_tcp_server_bind,
     .unbind  = oxf_tcp_server_unbind,
     .start   = oxf_tcp_server_con_start,
     .stop    = oxf_tcp_server_con_stop,
     .reply   = oxf_tcp_server_reply,
-
-    .map     = oxf_tcp_server_map,
-    .rdma    = oxf_tcp_server_rdma_req
 };
 
 struct oxf_server *oxf_tcp_server_init (void)

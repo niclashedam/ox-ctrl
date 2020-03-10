@@ -116,16 +116,6 @@ struct oxf_rdma_state {
   struct sockaddr_in inet_addr;
   unsigned int len;
   unsigned int listen;
-
-  struct oxf_rdma_buffer *buffers;
-  int buffer_count;
-  int registered_buffers;
-};
-
-struct oxf_rdma_buffer {
-    off_t offset;
-    int size;
-    void *buffer;
 };
 
 /* RDMA END */
@@ -259,6 +249,7 @@ typedef struct oxf_server_con *(oxf_svr_bind) (struct oxf_server *server,
                             uint16_t conn_id, const char *addr, uint16_t port);
 
 typedef void (oxf_svr_map) (void *buffer, uint32_t size);
+typedef void (oxf_svr_unmap) (void *buffer, uint32_t size);
 
 struct oxf_server_ops {
     oxf_svr_bind          *bind;
@@ -268,6 +259,7 @@ struct oxf_server_ops {
     oxf_svr_reply         *reply;
 
     oxf_svr_map           *map;
+    oxf_svr_unmap	  *unmap;
     oxf_rdma_req          *rdma;
 };
 
@@ -295,6 +287,7 @@ typedef struct oxf_client_con *(oxf_cli_connect) (struct oxf_client *client,
       uint16_t cid, const char *addr, uint16_t port, oxf_rcv_reply_fn *recv_fn);
 
 typedef void (oxf_cli_map) (void *buffer, uint32_t size);
+typedef void (oxf_cli_unmap) (void *buffer, uint32_t size);
 
 struct oxf_client_ops {
     oxf_cli_connect     *connect;
@@ -302,6 +295,7 @@ struct oxf_client_ops {
     oxf_cli_send        *send;
 
     oxf_cli_map           *map;
+    oxf_cli_unmap           *unmap;
     oxf_rdma_req	*rdma;
 };
 

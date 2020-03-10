@@ -1,11 +1,11 @@
 /* OX: Open-Channel NVM Express SSD Controller
  *
- *  - OX NVMe over UDP (server side) 
+ *  - OX NVMe over UDP (server side)
  *
  * Copyright 2018 IT University of Copenhagen
- * 
+ *
  * Written by Ivan Luiz Picoli <ivpi@itu.dk>
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -17,7 +17,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  */
 
 #include <stdio.h>
@@ -59,7 +59,7 @@ struct oxf_server_con *oxf_udp_server_bind (struct oxf_server *server,
     con->server = server;
     con->running = 0;
 
-    if ( (con->sock_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) { 
+    if ( (con->sock_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) {
         free (con);
         return NULL;
     }
@@ -69,7 +69,7 @@ struct oxf_server_con *oxf_udp_server_bind (struct oxf_server *server,
     con->addr.sin_port = htons(port);
 
     if ( bind(con->sock_fd, (const struct sockaddr *) &con->addr,
-                					sizeof(con->addr)) < 0 ) 
+                					sizeof(con->addr)) < 0 )
     {
         log_err ("[ox-fabrics (bind): Socket bind failure.]");
         goto ERR;
@@ -132,16 +132,16 @@ void *oxf_udp_server_con_th (void *arg)
 
         if (n == 1 && (buffer[0] == OXF_CON_BYTE) )
             goto ACK;
-        
+
         con->rcv_fn (n, (void *) buffer, (void *) &client);
         continue;
 
 ACK:
-        /* Send a MSG_CONFIRM to the client to confirm connection */        
+        /* Send a MSG_CONFIRM to the client to confirm connection */
         if (sendto(con->sock_fd, (char *) ack, 1, MSG_CONFIRM,
                             (const struct sockaddr *) &client, len) != 1)
             log_err ("[ox-fabrics: Connect ACK hasn't been sent.]");
-            
+
     }
 
     log_err ("[ox-fabrics: Connection %d is closed.]", con->cid);
