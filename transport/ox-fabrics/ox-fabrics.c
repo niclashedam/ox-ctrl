@@ -485,6 +485,8 @@ int ox_fabrics_init (void)
         fabrics.server->n_ifaces = core.net_ifaces_count;
     }
 
+    ox_fabrics.transport_ops = fabrics.server->ops;
+
     fabrics.running = 1;
 
     log_info ("[ox-fabrics: Started successfully.]");

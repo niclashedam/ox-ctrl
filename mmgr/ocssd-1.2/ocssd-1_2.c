@@ -13,6 +13,7 @@
 #include "../../include/libox.h"
 #include "../../include/ox-mq.h"
 #include "ocssd-1_2.h"
+#include <ox-fabrics.h>
 
 extern struct core_struct core;
 static struct ocssd_ctrl ocssd;

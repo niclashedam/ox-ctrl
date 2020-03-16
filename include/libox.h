@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <ox-lightnvm.h>
 #include <ox-uatomic.h>
+#include <ox-fabrics.h>
 
 typedef struct NvmeCtrl      NvmeCtrl;
 typedef struct NvmeCmd       NvmeCmd;
@@ -501,6 +502,7 @@ struct nvm_fabrics_ops {
 struct nvm_fabrics {
     const char              *name;
     struct nvm_fabrics_ops  *ops;
+    struct oxf_server_ops   *transport_ops;
 };
 
 #define NVM_MAGIC           0x3c

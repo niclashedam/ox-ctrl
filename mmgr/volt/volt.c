@@ -30,6 +30,7 @@
 #include <ox-uatomic.h>
 #include <libox.h>
 #include <ox-mq.h>
+#include <ox-fabrics.h>
 
 static u_atomic_t                nextprp[VOLT_CHIP_COUNT];
 static pthread_spinlock_t        prpmap_spin[VOLT_CHIP_COUNT];
