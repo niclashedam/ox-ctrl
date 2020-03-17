@@ -62,16 +62,19 @@ extern uint16_t pending_conn;
 
 int oxf_rdma (void *buf, uint32_t size, uint64_t prp, uint8_t dir)
 {
+    printf("halp halp -> %d\n", OXF_PROTOCOL == OXF_ROCE);
     switch (dir) {
 
-#if OXF_PROTOCOL == OXF_RCE
-	case NVM_DMA_TO_HOST:
-            // RDMA PULL (host reads)
-	    // 1) rwrite from BUF into PRP
+#if OXF_PROTOCOL == OXF_ROCE
+        case NVM_DMA_TO_HOST:
+            // RDMA PUSH (host reads)
+            // 1) rwrite from BUF into PRP
+            fabrics.server->ops->rdma(buf, size, prp, OXF_RDMA_PUSH);
         case NVM_DMA_FROM_HOST:
-            // RDMA PUSH (host writes) Copy from PRP into BUF
-	    // 1) push
-	    // 2) wait until rdma is completed (Niclas protocol)
+            // RDMA PULL (host writes) Copy from PRP into BUF
+    	    // 1) push
+    	    // 2) wait until rdma is completed (Niclas protocol)
+            fabrics.server->ops->rdma(buf, size, prp, OXF_RDMA_PULL);
 #else
        /* Memory copy is performed if In-capsule data used */
 	case NVM_DMA_TO_HOST:
@@ -147,7 +150,7 @@ static uint32_t oxf_fabrics_set_sgl (struct nvmef_capsule_sq *capsule,
     uint32_t bytes = 0;
     uint64_t offset;
 
-#if OXF_PROTOCOL == OXF_RCE
+#if OXF_PROTOCOL == OXF_ROCE
     goto RDMA;
 #endif
 
@@ -201,7 +204,7 @@ NEXT:
             break;
     }
 
-#if OXF_PROTOCOL == OXF_RCE
+#if OXF_PROTOCOL == OXF_ROCE
 RDMA:
 #endif
     /* Set in-command SGL entry as Last Segment pointing to the SGL */

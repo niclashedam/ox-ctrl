@@ -75,7 +75,7 @@ static void nvme_test_callback (void *ctx, uint16_t status)
 
     if (done % NVME_TEST_LBA_IO * 400 == 0)
         //nvme_test_print_runtime ();
-          
+
     if (done == lastlba - firstlba + 1) {
         GET_NANOSECONDS(end,ts_e);
         done++;
@@ -165,7 +165,7 @@ void nvme_test_run (void)
         ctx[it].slba = slba;
 
         ctx[it].nlb = (slba + lbaio > lastlba) ? lastlba - slba + 1 : lbaio;
-        
+
         boff = ((slba - 1) % NVME_TEST_LBA_BUF) * NVMEH_BLK_SZ;
         iosz = (slba + lbaio > lastlba) ?
                                 ctx[it].nlb * NVMEH_BLK_SZ : NVME_TEST_IO_SZ;

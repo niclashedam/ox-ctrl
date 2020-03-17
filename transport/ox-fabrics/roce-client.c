@@ -114,8 +114,7 @@ void oxf_roce_client_unmap (void *buffer, uint32_t size){
 }
 
 int oxf_roce_client_rdma_req (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
-  uint8_t normalised_dir = (dir != NVM_DMA_TO_HOST) ? OXF_RDMA_PUSH : OXF_RDMA_PULL;
-  return oxf_roce_rdma(state.con_fd, buf, size, prp, normalised_dir);
+  return oxf_roce_rdma(state.con_fd, buf, size, prp, dir);
 }
 
 struct oxf_client_ops oxf_roce_cli_ops = {

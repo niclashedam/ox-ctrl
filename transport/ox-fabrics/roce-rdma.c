@@ -39,6 +39,7 @@ void *oxf_roce_rdma_handler(void *p){
     struct oxf_rdma_state *state = (struct oxf_rdma_state *) p;
     struct oxf_rdma_request request;
 
+LISTEN:
     if(state->listen){
         log_info("[ox-fabrics (RDMA): Waiting for RDMA client to connect.]");
         state->con_fd = raccept(state->sock_fd, (struct sockaddr *) &state->inet_addr, &state->len);
@@ -62,7 +63,10 @@ void *oxf_roce_rdma_handler(void *p){
         if (bytes < 0) continue;
 
         /* Client disconnected */
-        if(bytes == 0) break;
+        if(bytes == 0){
+            log_info("[ox-fabrics (RDMA): RDMA client disconnected. Going back to listen state.]");
+            goto LISTEN;
+        }
 
         printf("Received REQ with %d bytes\n", bytes);
 

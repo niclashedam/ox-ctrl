@@ -134,6 +134,7 @@ static void oxf_host_rcv_fn (uint32_t size, void *arg)
 #if OXF_PROTOL == OXF_ROCE
 	        /* UNMAP RDMA buffers here: (void *) desc[desc_i].data.addr
 		 *   			     length */
+         fabrics.client->ops->unmap(desc[desc_i].data.addr, desc[desc_i].data.length);
 #else
 		/* Reads: Copy data directly to the user */
 		if (!qcmd->is_write) {
@@ -187,6 +188,7 @@ static uint32_t oxf_host_prepare_sq_capsule (struct nvmef_capsule_sq *capsule,
             /* REGISTER THE RDMA BUFFER HERE:
              * (void *) desc[desc_i].data.addr
              *          desc[desc_i].data.length */
+            fabrics.client->ops->map(desc[desc_i].data.addr, desc[desc_i].data.length);
 #else
 	    if (bytes > OXF_FAB_CAPS_SZ)
                 return bytes;

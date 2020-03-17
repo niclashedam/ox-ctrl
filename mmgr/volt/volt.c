@@ -317,7 +317,7 @@ static int volt_init_dma_buf (void)
 
 #if OXF_PROTOCOL == OXF_ROCE
     /* MAP RDMA BUFFERS HERE: volt->edma, size VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE */
-    core.nvm_fabrics->transport_ops->unmap(volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
+    core.nvm_fabrics->transport_ops->map(volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
 #endif
 
     dma_buf = volt_alloc(sizeof (void *) * VOLT_DMA_SLOT_INDEX);

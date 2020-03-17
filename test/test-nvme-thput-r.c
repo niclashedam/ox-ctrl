@@ -90,7 +90,7 @@ static void nvme_test_callback (void *ctx, uint16_t status)
             corr++;
     }
     free (my_ctx->buf);
-          
+
     if (done == lastlba - firstlba + 1) {
         GET_NANOSECONDS(end,ts_e);
         done++;
@@ -255,4 +255,3 @@ EXIT:
 
     return 0;
 }
-
