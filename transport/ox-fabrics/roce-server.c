@@ -149,6 +149,7 @@ struct oxf_server_ops oxf_roce_srv_ops = {
 
 struct oxf_server *oxf_roce_server_init (void)
 {
+  log_info ("[ox-fabrics: Data protocol -> RoCE\n");
   struct oxf_server *server = oxf_tcp_server_init();
   server->ops = &oxf_roce_srv_ops;
   return server;

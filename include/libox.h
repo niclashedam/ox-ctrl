@@ -9,7 +9,6 @@
 #include <pthread.h>
 #include <ox-lightnvm.h>
 #include <ox-uatomic.h>
-#include <ox-fabrics.h>
 
 typedef struct NvmeCtrl      NvmeCtrl;
 typedef struct NvmeCmd       NvmeCmd;
