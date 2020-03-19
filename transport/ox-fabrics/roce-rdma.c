@@ -52,7 +52,7 @@ LISTEN:
 
     log_info("[ox-fabrics (RDMA): RDMA connection established.]");
 
-    printf("Handler started! :-)\n");
+    printf("Handler started!\n");
 
     *state->is_running = 1;
 
@@ -61,6 +61,8 @@ LISTEN:
 
         /* Timeout */
         if (bytes < 0) continue;
+
+        printf("Help\n");
 
         /* Client disconnected */
         if(bytes == 0){

@@ -3,9 +3,9 @@
  *  - OX Controller Core Execution
  *
  * Copyright 2016 IT University of Copenhagen
- * 
+ *
  * Written by Ivan Luiz Picoli <ivpi@itu.dk>
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -403,7 +403,6 @@ int ox_dma (void *ptr, uint64_t prp, ssize_t size, uint8_t direction)
     switch (direction) {
         case NVM_DMA_TO_HOST:
         case NVM_DMA_FROM_HOST:
-
             if (core.std_transport == NVM_TRANSP_FABRICS)
                 return core.nvm_fabrics->ops->rdma (ptr, size, prp, direction);
             else

@@ -194,7 +194,7 @@ static void volt_free_dma_buf (void)
 
 #if OXF_PROTOCOL == OXF_ROCE
 	/* UNMAP RDMA BUFFERS HERE: dma_buf[slots] */
-    core.nvm_fabrics->transport_ops->unmap(dma_buf[slots], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
+    // core.nvm_fabrics->transport_ops->unmap(dma_buf[slots], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
 #endif
 
 	volt_free (dma_buf[slots], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
@@ -204,7 +204,7 @@ static void volt_free_dma_buf (void)
 
 #if OXF_PROTOCOL == OXF_ROCE
     /* UNMAP RDMA BUFFER HERE: volt->edma */
-    core.nvm_fabrics->transport_ops->unmap(volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
+    // core.nvm_fabrics->transport_ops->unmap(volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
 #endif
 
     volt_free (volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
@@ -317,7 +317,7 @@ static int volt_init_dma_buf (void)
 
 #if OXF_PROTOCOL == OXF_ROCE
     /* MAP RDMA BUFFERS HERE: volt->edma, size VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE */
-    core.nvm_fabrics->transport_ops->map(volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
+    // core.nvm_fabrics->transport_ops->map(volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
 #endif
 
     dma_buf = volt_alloc(sizeof (void *) * VOLT_DMA_SLOT_INDEX);
@@ -332,7 +332,7 @@ static int volt_init_dma_buf (void)
 
 #if OXF_PROTOCOL == OXF_ROCE
 	/* MAP RDMA BUFFERS HERE: dma_buf[slots_i], size VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE */
-    core.nvm_fabrics->transport_ops->unmap(dma_buf[slots_i], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
+    // core.nvm_fabrics->transport_ops->unmap(dma_buf[slots_i], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
 #endif
     }
 
@@ -345,7 +345,7 @@ FREE_SLOTS:
 
 #if OXF_PROTOCOL == OXF_ROCE
 	/* UNMAP RDMA BUFFERS HERE: dma_buf[slots_i] */
-    core.nvm_fabrics->transport_ops->unmap(dma_buf[slots_i], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
+    // core.nvm_fabrics->transport_ops->unmap(dma_buf[slots_i], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
 #endif
     }
     volt_free (dma_buf, sizeof (void *) * VOLT_DMA_SLOT_INDEX);
@@ -353,7 +353,7 @@ FREE:
 
 #if OXF_PROTOCOL == OXF_ROCE
     /* UNMAP RDMA BUFFERS HERE: volt->edma */
-    core.nvm_fabrics->transport_ops->unmap(volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
+    // core.nvm_fabrics->transport_ops->unmap(volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
 #endif
 
     volt_free (volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);

@@ -150,8 +150,9 @@ NEXT:
                 if (desc_i * sizeof (struct NvmeSGLDesc) >= NVMEF_SGL_SZ)
                     break;
             }
-
+#if OXF_PROTOCOL != OXF_ROCE
 WRITES:
+#endif
             ox_mq_complete_req (fabrics.queues[sqid].mq, qcmd->mq_req);
 
             break;

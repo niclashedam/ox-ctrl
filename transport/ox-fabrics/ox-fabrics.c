@@ -62,7 +62,7 @@ extern uint16_t pending_conn;
 
 int oxf_rdma (void *buf, uint32_t size, uint64_t prp, uint8_t dir)
 {
-    printf("halp halp -> %d\n", OXF_PROTOCOL == OXF_ROCE);
+    printf("RDMA ORG\n");
     switch (dir) {
 
 #if OXF_PROTOCOL == OXF_ROCE
@@ -72,9 +72,11 @@ int oxf_rdma (void *buf, uint32_t size, uint64_t prp, uint8_t dir)
             fabrics.server->ops->rdma(buf, size, prp, OXF_RDMA_PUSH);
         case NVM_DMA_FROM_HOST:
             // RDMA PULL (host writes) Copy from PRP into BUF
-    	    // 1) push
-    	    // 2) wait until rdma is completed (Niclas protocol)
+    	    // 1) requst a push
+    	    // 2) wait until rdma is completed
+            fabrics.server->ops->map(buf, size);
             fabrics.server->ops->rdma(buf, size, prp, OXF_RDMA_PULL);
+            fabrics.server->ops->unmap(buf, size);
 #else
        /* Memory copy is performed if In-capsule data used */
 	case NVM_DMA_TO_HOST:
@@ -151,6 +153,7 @@ static uint32_t oxf_fabrics_set_sgl (struct nvmef_capsule_sq *capsule,
     uint64_t offset;
 
 #if OXF_PROTOCOL == OXF_ROCE
+    /* WARNING: THIS STATEMENT BREAKS RDMA */
     goto RDMA;
 #endif
 
@@ -274,7 +277,7 @@ static void oxf_fabrics_rcv_fn (uint32_t size, void *arg, void *recv_cli)
                 TAILQ_INSERT_TAIL(&q_reply->reply_uh, reply, entry);
                 pthread_spin_unlock (&q_reply->reply_spin);
 
-                /* Client structure must be maximum of 1024 bytes */
+                /* Client structure must be maximum of 32 bytes */
                 switch (reply->type) {
                     case OXF_UDP:
                         memcpy (reply->cli, recv_cli, sizeof (struct sockaddr));

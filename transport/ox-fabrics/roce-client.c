@@ -106,6 +106,7 @@ void oxf_roce_client_exit (struct oxf_client *client)
 }
 
 void oxf_roce_client_map (void *buffer, uint32_t size){
+  printf("Mapping %p\n", buffer);
   riomap(state.con_fd, buffer, size, PROT_WRITE, 0, -1);
 }
 
@@ -114,6 +115,7 @@ void oxf_roce_client_unmap (void *buffer, uint32_t size){
 }
 
 int oxf_roce_client_rdma_req (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
+  printf("RDMA REQ\n");
   return oxf_roce_rdma(state.con_fd, buf, size, prp, dir);
 }
 
@@ -123,6 +125,7 @@ struct oxf_client_ops oxf_roce_cli_ops = {
     .send       = oxf_roce_client_send,
 
     .map     = oxf_roce_client_map,
+    .unmap     = oxf_roce_client_unmap,
     .rdma = oxf_roce_client_rdma_req
 };
 
