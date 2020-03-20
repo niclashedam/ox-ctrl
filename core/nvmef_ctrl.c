@@ -96,7 +96,7 @@ int nvmef_sgl_to_prp (uint32_t nlb, NvmeSGLDesc *desc, uint64_t *prp_buf,
                     return -1;
                 }
                 if (ox_dma (next_desc, desc->data.addr, desc->data.length,
-                                                          NVM_DMA_FROM_HOST)) {
+                                                          NVM_DMA_SYNC_WRITE)) {
                     log_err ("[nvme: DMA error, next SGL segment not loaded]");
                     return -1;
                 }

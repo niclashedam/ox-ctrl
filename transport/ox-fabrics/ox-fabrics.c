@@ -152,11 +152,6 @@ static uint32_t oxf_fabrics_set_sgl (struct nvmef_capsule_sq *capsule,
     uint32_t bytes = 0;
     uint64_t offset;
 
-#if OXF_PROTOCOL == OXF_ROCE
-    /* WARNING: THIS STATEMENT BREAKS RDMA */
-    goto RDMA;
-#endif
-
     if (is_write)
         offset = (uint64_t) capsule->data;
     else
@@ -169,7 +164,11 @@ static uint32_t oxf_fabrics_set_sgl (struct nvmef_capsule_sq *capsule,
 
     while (oxf_get_sgl_desc_length (&desc[desc_i])) {
 
-        if (desc[desc_i].type == NVME_SGL_BIT_BUCKET)
+#if OXF_PROTOCOL == OXF_ROCE
+	goto NEXT;
+#endif
+
+	if (desc[desc_i].type == NVME_SGL_BIT_BUCKET)
             goto NEXT;
 
         if (    (desc[desc_i].type != NVME_SGL_DATA_BLOCK) &&
@@ -207,9 +206,6 @@ NEXT:
             break;
     }
 
-#if OXF_PROTOCOL == OXF_ROCE
-RDMA:
-#endif
     /* Set in-command SGL entry as Last Segment pointing to the SGL */
     capsule->cmd.sgl.type        = NVME_SGL_LAST_SEGMENT;
     capsule->cmd.sgl.subtype     = NVME_SGL_SUB_ADDR;
