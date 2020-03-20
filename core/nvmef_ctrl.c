@@ -57,7 +57,8 @@ int nvmef_sgl_to_prp (uint32_t nlb, NvmeSGLDesc *desc, uint64_t *prp_buf,
             return -1;
         }
 
-        if (desc->subtype != NVME_SGL_SUB_ADDR) {
+        if ( (desc->subtype != NVME_SGL_SUB_ADDR) ||
+	     (desc->subtype != NVME_SGL_SUB_RDMA) ) {
             log_err ("[nvme: SGL Subtype not supported: 0x%x]", desc->subtype);
             return -1;
         }
