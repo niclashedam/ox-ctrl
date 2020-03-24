@@ -69,20 +69,27 @@ int oxf_rdma (void *buf, uint32_t size, uint64_t prp, uint8_t dir)
         case NVM_DMA_TO_HOST:
             // RDMA PUSH (host reads)
             // 1) rwrite from BUF into PRP
+            printf("DMA to Host\n");
+            printf("%d\n", size);
             fabrics.server->ops->rdma(buf, size, prp, OXF_RDMA_PUSH);
+            break;
         case NVM_DMA_FROM_HOST:
             // RDMA PULL (host writes) Copy from PRP into BUF
     	    // 1) requst a push
     	    // 2) wait until rdma is completed
+            printf("DMA from Host\n");
             fabrics.server->ops->map(buf, size);
             fabrics.server->ops->rdma(buf, size, prp, OXF_RDMA_PULL);
             fabrics.server->ops->unmap(buf, size);
+            break;
 #else
        /* Memory copy is performed if In-capsule data used */
 	case NVM_DMA_TO_HOST:
             memcpy ((void *) prp, buf, size);
-        case NVM_DMA_FROM_HOST:
+            break;
+    case NVM_DMA_FROM_HOST:
             memcpy (buf, (void *) prp, size);
+            break;
 #endif
     }
 

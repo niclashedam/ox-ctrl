@@ -63,7 +63,7 @@ static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client
 
     if ( rconnect(sock_fd, (const struct sockaddr *) &inet_addr, len) < 0){
         printf ("[ox-fabrics (RDMA): Socket connection failure.]\n");
-        rshutdown(sock_fd, 0);
+        rshutdown(sock_fd, 2);
         rclose(sock_fd);
         return NULL;
     }
@@ -91,17 +91,17 @@ static int oxf_roce_client_send (struct oxf_client_con *con, uint32_t size,
 void oxf_roce_client_disconnect (struct oxf_client_con *con)
 {
     is_running = 0;
-    pthread_kill(handler, 0);
 
-    rshutdown (state.sock_fd, 0);
-    rclose (state.sock_fd);
+    usleep(25000); // Wait for RDMA handler to exit
+
+    rshutdown (state.con_fd, 2);
+    rclose (state.con_fd);
 
     oxf_tcp_client_disconnect(con);
 }
 
 void oxf_roce_client_exit (struct oxf_client *client)
 {
-    pthread_kill(handler, 0);
     oxf_tcp_client_exit(client);
 }
 

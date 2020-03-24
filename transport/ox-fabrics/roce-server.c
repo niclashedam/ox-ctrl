@@ -99,10 +99,11 @@ ERR:
 void oxf_roce_server_unbind (struct oxf_server_con *con)
 {
   is_running = 0;
-  pthread_kill(handler, 0);
 
-  if (state.con_fd) rshutdown(state.con_fd, 0);
-  rshutdown (state.sock_fd, 0);
+  usleep(25000); // Wait for RDMA handler to exit
+
+  if (state.con_fd) rshutdown(state.con_fd, 2);
+  rshutdown (state.sock_fd, 2);
   rclose (state.sock_fd);
   oxf_tcp_server_unbind(con);
 }

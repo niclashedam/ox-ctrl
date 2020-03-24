@@ -66,6 +66,7 @@ LISTEN:
 
         /* Client disconnected */
         if(bytes == 0){
+            printf("Remote disconnected\n");
             log_info("[ox-fabrics (RDMA): RDMA client disconnected. Going back to listen state.]");
             goto LISTEN;
         }
@@ -79,7 +80,9 @@ LISTEN:
         }
 
         printf("Was push request from %p (L) -> %p (R) \n", request.remote_addr, request.local_addr);
-        riowrite(state->con_fd, request.remote_addr, request.size, p2o(request.local_addr), 0);
+        int b = riowrite(state->con_fd, request.remote_addr, request.size, p2o(request.local_addr), 0);
+        printf("Riowrite completed %d\n", b);
+        perror("riowrite error");
         request.direction = OXF_RDMA_CONFIRM;
 
         rsend(state->con_fd, &request, sizeof(request), 0);
@@ -97,7 +100,7 @@ int oxf_roce_rdma (int con_fd, void *buf, uint32_t size, uint64_t prp, uint8_t d
     request.remote_addr = (void *) prp;
     request.size = size;
 
-    printf("Hej\n");
+    printf("Hej %d\n", request.size);
 
     if (con_fd < 1){
       log_err ("[ox-fabrics (RDMA): Data sent over unestablished connection.]");
@@ -106,7 +109,9 @@ int oxf_roce_rdma (int con_fd, void *buf, uint32_t size, uint64_t prp, uint8_t d
 
     if (request.direction == OXF_RDMA_PUSH){
       printf("Pushing to %p (L) -> %p (R)\n", request.local_addr, request.remote_addr);
-      riowrite(con_fd, request.local_addr, request.size, p2o(request.remote_addr), 0);
+      int b = riowrite(con_fd, request.local_addr, request.size, p2o(request.remote_addr), 0);
+      printf("Riowrite completed %d\n", b);
+      perror("riowrite error");
       return 1;
     }
 

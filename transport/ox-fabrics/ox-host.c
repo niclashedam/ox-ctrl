@@ -181,16 +181,18 @@ static uint32_t oxf_host_prepare_sq_capsule (struct nvmef_capsule_sq *capsule,
     memcpy (capsule->sgl, desc, sgl_size * sizeof (NvmeSGLDesc));
 
     for (desc_i = 0; desc_i < sgl_size; desc_i++) {
+#if OXF_PROTOCOL == OXF_ROCE
+        /* REGISTER THE RDMA BUFFER HERE:
+         * (void *) desc[desc_i].data.addr
+         *          desc[desc_i].data.length */
+        if(!is_write && desc[desc_i].data.addr)
+            fabrics.client->ops->map(desc[desc_i].data.addr, desc[desc_i].data.length);
+#endif
         if ( is_write && (desc[desc_i].type == NVME_SGL_DATA_BLOCK) ) {
 
             bytes += desc[desc_i].data.length;
 
-#if OXF_PROTOCOL == OXF_ROCE
-            /* REGISTER THE RDMA BUFFER HERE:
-             * (void *) desc[desc_i].data.addr
-             *          desc[desc_i].data.length */
-            fabrics.client->ops->map(desc[desc_i].data.addr, desc[desc_i].data.length);
-#else
+#if OXF_PROTOCOL != OXF_ROCE
 	    if (bytes > OXF_FAB_CAPS_SZ)
                 return bytes;
 
