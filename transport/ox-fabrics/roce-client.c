@@ -68,8 +68,6 @@ static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client
         return NULL;
     }
 
-    is_running = 1;
-
     state.inet_addr = inet_addr;
     state.len = len;
     state.con_fd = sock_fd; // bottom up because we are a client
@@ -77,6 +75,8 @@ static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client
     state.is_running = &is_running;
 
     pthread_create(&handler, NULL, &oxf_roce_rdma_handler, &state);
+
+    while(!state.is_running) usleep(1000);
 
     return oxf_tcp_client_connect(client, cid, addr, port, recv_fn);
 }
@@ -106,7 +106,7 @@ void oxf_roce_client_exit (struct oxf_client *client)
 }
 
 void oxf_roce_client_map (void *buffer, uint32_t size){
-  printf("Mapping %p\n", buffer);
+  printf("Mapping %p to %d\n", buffer, state.con_fd);
   riomap(state.con_fd, buffer, size, PROT_WRITE, 0, -1);
 }
 

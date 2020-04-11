@@ -67,8 +67,9 @@ LISTEN:
         /* Client disconnected */
         if(bytes == 0){
             printf("Remote disconnected\n");
-            log_info("[ox-fabrics (RDMA): RDMA client disconnected. Going back to listen state.]");
-            goto LISTEN;
+            log_info("[ox-fabrics (RDMA): RDMA client disconnected.]");
+            if(state->listen)   goto LISTEN;
+                                goto EXIT;
         }
 
         printf("Received REQ with %d bytes\n", bytes);
@@ -90,6 +91,9 @@ LISTEN:
         usleep(1000);
     }
 
+EXIT:
+    log_info("[ox-fabrics (RDMA): Handler exited.]");
+
     return state;
 }
 
@@ -108,9 +112,9 @@ int oxf_roce_rdma (int con_fd, void *buf, uint32_t size, uint64_t prp, uint8_t d
     }
 
     if (request.direction == OXF_RDMA_PUSH){
-      printf("Pushing to %p (L) -> %p (R)\n", request.local_addr, request.remote_addr);
+      printf("Pushing to %p (L) -> %p (R). -> %d\n", request.local_addr, request.remote_addr, con_fd);
       int b = riowrite(con_fd, request.local_addr, request.size, p2o(request.remote_addr), 0);
-      printf("Riowrite completed %d\n", b);
+      printf("Riowrite completed %d to %p\n", b, (void *) (p2o(request.remote_addr)));
       perror("riowrite error");
       return 1;
     }

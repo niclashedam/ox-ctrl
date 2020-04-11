@@ -87,6 +87,9 @@ struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
     state.listen = 1;
 
     pthread_create(&handler, NULL, &oxf_roce_rdma_handler, &state);
+
+    while(!state.is_running) usleep(1000);
+
     return oxf_tcp_server_bind(server, cid, addr, port);
 
 ERR:
@@ -125,7 +128,7 @@ int oxf_roce_server_reply (struct oxf_server_con *con, const void *buf,
 }
 
 void oxf_roce_server_map (void *buffer, uint32_t size){
-  printf("Mapping %p\n", buffer);
+  printf("Mapping %p to %d\n", buffer, state.con_fd);
   riomap(state.con_fd, buffer, size, PROT_WRITE, 0, -1);
 }
 
