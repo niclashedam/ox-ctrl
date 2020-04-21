@@ -68,8 +68,10 @@
 #define OXF_PORT_3        35502
 #define OXF_PORT_4        35503
 
-#define RDMA_ADDR	"10.2.1.2"
-#define RDMA_PORT	36000
+#define OXF_RDMA_ADDR     "10.2.1.2"
+#define OXF_RDMA_PORT     36000
+#define OXF_RDMA_SIZE     1048576
+#define OXF_RDMA_COUNT    256
 
 #define OXF_SERVER_MAX_CON  64
 #define OXF_CLIENT_MAX_CON  64
@@ -98,15 +100,16 @@ enum oxf_capsule_types {
 #define OXF_FAB_CAPS_SZ     OXF_CAPSULE_SZ + OXF_FAB_HEADER_SZ
 
 /* RDMA */
-typedef int (oxf_rdma_req) (void *buf, uint32_t size, uint64_t prp, uint8_t dir);
-enum oxf_rdma_directions { OXF_RDMA_PUSH, OXF_RDMA_PULL, OXF_RDMA_CONFIRM };
+typedef off_t (oxf_rdma) (void *buf, uint32_t size, uint64_t prp, uint8_t dir);
+enum oxf_rdma_buffer_status {
+    OXF_RDMA_BUFFER_OPEN,
+    OXF_RDMA_BUFFER_CLOSED,
+};
 
-struct oxf_rdma_request {
-  int direction;
-  void *local_addr;
-  void *remote_addr;
-  size_t size;
-  int *fulfilment_bit;
+struct oxf_rdma_buffer {
+    void *buf;
+    size_t size;
+    short status;
 };
 
 struct oxf_rdma_state {
@@ -116,6 +119,7 @@ struct oxf_rdma_state {
   struct sockaddr_in inet_addr;
   unsigned int len;
   unsigned int listen;
+  struct oxf_rdma_buffer buffers[OXF_RDMA_COUNT];
 };
 
 /* RDMA END */
@@ -260,7 +264,7 @@ struct oxf_server_ops {
 
     oxf_svr_map           *map;
     oxf_svr_unmap	  *unmap;
-    oxf_rdma_req          *rdma;
+    oxf_rdma          *rdma;
 };
 
 struct oxf_server {
@@ -296,7 +300,7 @@ struct oxf_client_ops {
 
     oxf_cli_map           *map;
     oxf_cli_unmap           *unmap;
-    oxf_rdma_req	*rdma;
+    oxf_rdma	*rdma;
 };
 
 struct oxf_client {

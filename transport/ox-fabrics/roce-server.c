@@ -60,10 +60,10 @@ struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
     }
 
     inet_addr.sin_family = AF_INET;
-    inet_addr.sin_port = htons(RDMA_PORT);
-    inet_aton(RDMA_ADDR, &inet_addr.sin_addr);
+    inet_addr.sin_port = htons(OXF_RDMA_PORT);
+    inet_aton(OXF_RDMA_ADDR, &inet_addr.sin_addr);
 
-    int RIOs = 64;
+    int RIOs = OXF_RDMA_COUNT;
     rsetsockopt(sock_fd, SOL_RDMA, RDMA_IOMAPSIZE, (void *) &RIOs, sizeof RIOs);
 
     if ( rbind(sock_fd, (const struct sockaddr *) &inet_addr,
@@ -128,17 +128,29 @@ int oxf_roce_server_reply (struct oxf_server_con *con, const void *buf,
 }
 
 void oxf_roce_server_map (void *buffer, uint32_t size){
-  printf("Mapping %p to %d\n", buffer, state.con_fd);
-  riomap(state.con_fd, buffer, size, PROT_WRITE, 0, -1);
+  printf("Mapping on the server is not allowed in this build.");
+  //riomap(state.con_fd, buffer, size, PROT_WRITE, 0, -1);
 }
 
 void oxf_roce_server_unmap (void *buffer, uint32_t size){
-  riounmap(state.con_fd, buffer, size);
+  printf("Unmapping on the server is not allowed in this build.");
+  //riounmap(state.con_fd, buffer, size);
 }
 
-int oxf_roce_server_rdma_req (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
-  printf("RDMA REQ\n");
-  return oxf_roce_rdma(state.con_fd, buf, size, prp, dir);
+off_t oxf_roce_server_rdma (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
+
+    if(dir != NVM_DMA_TO_HOST){
+        printf("[ox-fabrics (RDMA): The server can only transfer to the host.]\n");
+        return;
+    }
+
+    if(prp == NULL){
+        printf("[ox-fabrics (RDMA): The server request a remote PRP.]\n");
+        return;
+    }
+
+    riowrite(state.con_fd, buf, size, (off_t) prp, 0);
+    return (off_t) prp;
 }
 
 struct oxf_server_ops oxf_roce_srv_ops = {
@@ -150,7 +162,7 @@ struct oxf_server_ops oxf_roce_srv_ops = {
 
     .map     = oxf_roce_server_map,
     .unmap     = oxf_roce_server_unmap,
-    .rdma    = oxf_roce_server_rdma_req
+    .rdma    = oxf_roce_server_rdma
 };
 
 struct oxf_server *oxf_roce_server_init (void)

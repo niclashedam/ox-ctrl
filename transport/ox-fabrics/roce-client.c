@@ -55,10 +55,10 @@ static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client
     }
 
     inet_addr.sin_family = AF_INET;
-    inet_addr.sin_port = htons(RDMA_PORT);
-    inet_aton(RDMA_ADDR, &inet_addr.sin_addr);
+    inet_addr.sin_port = htons(OXF_RDMA_PORT);
+    inet_aton(OXF_RDMA_ADDR, &inet_addr.sin_addr);
 
-    int RIOs = 64;
+    int RIOs = OXF_RDMA_COUNT;
     rsetsockopt(sock_fd, SOL_RDMA, RDMA_IOMAPSIZE, (void *) &RIOs, sizeof RIOs);
 
     if ( rconnect(sock_fd, (const struct sockaddr *) &inet_addr, len) < 0){
@@ -106,7 +106,6 @@ void oxf_roce_client_exit (struct oxf_client *client)
 }
 
 void oxf_roce_client_map (void *buffer, uint32_t size){
-  printf("Mapping %p to %d\n", buffer, state.con_fd);
   riomap(state.con_fd, buffer, size, PROT_WRITE, 0, -1);
 }
 
@@ -114,9 +113,31 @@ void oxf_roce_client_unmap (void *buffer, uint32_t size){
   riounmap(state.con_fd, buffer, size);
 }
 
-int oxf_roce_client_rdma_req (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
-  printf("RDMA REQ\n");
-  return oxf_roce_rdma(state.con_fd, buf, size, prp, dir);
+off_t oxf_roce_client_rdma (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
+  struct oxf_rdma_buffer *buffer;
+
+  if(dir != NVM_DMA_FROM_HOST){
+      printf("[ox-fabrics (RDMA): The host can only transfer from the host.]\n");
+      return;
+  }
+
+  if(prp != NULL){
+      printf("[ox-fabrics (RDMA): The host does not accept a remote PRP.]\n");
+      return;
+  }
+
+RETRY:
+  for(int i = 0; i < OXF_RDMA_COUNT; i++){
+      if(state.buffers[i].status != OXF_RDMA_BUFFER_OPEN) continue;
+      buffer = &state.buffers[i];
+  }
+
+  if(buffer == NULL) goto RETRY;
+
+  buffer.status = OXF_RDMA_BUFFER_CLOSED;
+  riowrite(state.con_fd, buf, size, p2o(buffer->buf), 0);
+
+  return p2o(buffer->buf);
 }
 
 struct oxf_client_ops oxf_roce_cli_ops = {
@@ -126,7 +147,7 @@ struct oxf_client_ops oxf_roce_cli_ops = {
 
     .map     = oxf_roce_client_map,
     .unmap     = oxf_roce_client_unmap,
-    .rdma = oxf_roce_client_rdma_req
+    .rdma = oxf_roce_client_rdma
 };
 
 struct oxf_client *oxf_roce_client_init (void)
