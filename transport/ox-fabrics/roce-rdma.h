@@ -38,6 +38,5 @@
 #include <rdma/rsocket.h>
 
 void *oxf_roce_rdma_handler(void *p);
-inline off_t p2o(void *p){ return (off_t) p; }
 
 #endif /* OX_FABRICS_RDMA_H */

@@ -401,6 +401,8 @@ static int volt_host_dma_helper (struct nvm_mmgr_io_cmd *nvm_cmd)
     oob_addr = dma->virt_addr + nvm_cmd->sec_sz * nvm_cmd->n_sectors;
     dma_sec = nvm_cmd->n_sectors + 1;
 
+//////////// ------------- fix such that is not only sector
+
     for (; c < dma_sec; c++) {
         dma_sz = (c == dma_sec - 1) ? nvm_cmd->md_sz : nvm_cmd->sec_sz;
         prp = (c == dma_sec - 1) ? nvm_cmd->md_prp : nvm_cmd->prp[c];

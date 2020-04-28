@@ -74,7 +74,7 @@ LISTEN:
     *state->is_running = 1;
 
     while(*state->is_running){
-        // int bytes = rrecv(state->con_fd, &request , sizeof(request), MSG_DONTWAIT);
+        //int bytes = rrecv(state->con_fd, &request , sizeof(off_t), MSG_DONTWAIT);
 
         /* Timeout */
         // if (bytes < 0) continue;

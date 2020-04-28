@@ -100,10 +100,11 @@ enum oxf_capsule_types {
 #define OXF_FAB_CAPS_SZ     OXF_CAPSULE_SZ + OXF_FAB_HEADER_SZ
 
 /* RDMA */
-typedef off_t (oxf_rdma) (void *buf, uint32_t size, uint64_t prp, uint8_t dir);
+typedef off_t (oxf_transport_rdma) (void *buf, uint32_t size, uint64_t prp, uint8_t dir);
 enum oxf_rdma_buffer_status {
     OXF_RDMA_BUFFER_OPEN,
-    OXF_RDMA_BUFFER_CLOSED,
+    OXF_RDMA_BUFFER_RESERVED,
+    OXF_RDMA_BUFFER_INUSE,
 };
 
 struct oxf_rdma_buffer {
@@ -264,7 +265,7 @@ struct oxf_server_ops {
 
     oxf_svr_map           *map;
     oxf_svr_unmap	  *unmap;
-    oxf_rdma          *rdma;
+    oxf_transport_rdma          *rdma;
 };
 
 struct oxf_server {
@@ -300,7 +301,7 @@ struct oxf_client_ops {
 
     oxf_cli_map           *map;
     oxf_cli_unmap           *unmap;
-    oxf_rdma	*rdma;
+    oxf_transport_rdma	*rdma;
 };
 
 struct oxf_client {

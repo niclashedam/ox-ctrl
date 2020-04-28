@@ -114,19 +114,18 @@ void oxf_roce_client_unmap (void *buffer, uint32_t size){
 }
 
 off_t oxf_roce_client_rdma (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
-  struct oxf_rdma_buffer *buffer;
-
+RETRY:
   if(dir != NVM_DMA_FROM_HOST){
       printf("[ox-fabrics (RDMA): The host can only transfer from the host.]\n");
-      return;
+      return -1;
   }
 
-  if(prp != NULL){
+  if(prp > 0){
       printf("[ox-fabrics (RDMA): The host does not accept a remote PRP.]\n");
-      return;
+      return -1;
   }
 
-RETRY:
+  struct oxf_rdma_buffer *buffer = NULL;
   for(int i = 0; i < OXF_RDMA_COUNT; i++){
       if(state.buffers[i].status != OXF_RDMA_BUFFER_OPEN) continue;
       buffer = &state.buffers[i];
@@ -134,10 +133,12 @@ RETRY:
 
   if(buffer == NULL) goto RETRY;
 
-  buffer.status = OXF_RDMA_BUFFER_CLOSED;
-  riowrite(state.con_fd, buf, size, p2o(buffer->buf), 0);
+  buffer->status = OXF_RDMA_BUFFER_RESERVED;
+  off_t offset = (off_t) buffer->buf;
+  riowrite(state.con_fd, buf, size, offset, 0);
+  rsend(state.con_fd, &offset, sizeof(offset), 0);
 
-  return p2o(buffer->buf);
+  return offset;
 }
 
 struct oxf_client_ops oxf_roce_cli_ops = {
