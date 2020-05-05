@@ -192,20 +192,10 @@ static void volt_free_dma_buf (void)
 
     for (slots = 0; slots < VOLT_DMA_SLOT_INDEX; slots++) {
 
-#if OXF_PROTOCOL == OXF_ROCE
-	/* UNMAP RDMA BUFFERS HERE: dma_buf[slots] */
-    // core.nvm_fabrics->transport_ops->unmap(dma_buf[slots], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
-#endif
-
 	volt_free (dma_buf[slots], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
     }
 
     volt_free (dma_buf, sizeof (void *) * VOLT_DMA_SLOT_INDEX);
-
-#if OXF_PROTOCOL == OXF_ROCE
-    /* UNMAP RDMA BUFFER HERE: volt->edma */
-    // core.nvm_fabrics->transport_ops->unmap(volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
-#endif
 
     volt_free (volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
 }
@@ -315,11 +305,6 @@ static int volt_init_dma_buf (void)
     if (!volt->edma)
         return -1;
 
-#if OXF_PROTOCOL == OXF_ROCE
-    /* MAP RDMA BUFFERS HERE: volt->edma, size VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE */
-    // core.nvm_fabrics->transport_ops->map(volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
-#endif
-
     dma_buf = volt_alloc(sizeof (void *) * VOLT_DMA_SLOT_INDEX);
     if (!dma_buf)
         goto FREE;
@@ -329,11 +314,6 @@ static int volt_init_dma_buf (void)
         if (!dma_buf[slots_i])
             goto FREE_SLOTS;
         slots++;
-
-#if OXF_PROTOCOL == OXF_ROCE
-	/* MAP RDMA BUFFERS HERE: dma_buf[slots_i], size VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE */
-    // core.nvm_fabrics->transport_ops->unmap(dma_buf[slots_i], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
-#endif
     }
 
     return 0;
@@ -342,19 +322,9 @@ FREE_SLOTS:
     while (slots_i) {
 	slots_i--;
         volt_free (dma_buf[slots_i], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
-
-#if OXF_PROTOCOL == OXF_ROCE
-	/* UNMAP RDMA BUFFERS HERE: dma_buf[slots_i] */
-    // core.nvm_fabrics->transport_ops->unmap(dma_buf[slots_i], VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
-#endif
     }
     volt_free (dma_buf, sizeof (void *) * VOLT_DMA_SLOT_INDEX);
 FREE:
-
-#if OXF_PROTOCOL == OXF_ROCE
-    /* UNMAP RDMA BUFFERS HERE: volt->edma */
-    // core.nvm_fabrics->transport_ops->unmap(volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
-#endif
 
     volt_free (volt->edma, VOLT_PAGE_SIZE + VOLT_SECTOR_SIZE);
 

@@ -37,7 +37,7 @@
 #include <ox-fabrics.h>
 #include <tcp.h>
 #include <libox.h>
-#include <roce-rdma.h>
+#include <signal.h>
 
 #include <rdma/rsocket.h>
 
@@ -45,17 +45,59 @@ static int is_running;
 struct oxf_rdma_state state;
 pthread_t handler;
 
+void *oxf_roce_rdma_handler(){
+LISTEN:
+    printf("Listening ..\n");
+    state.con_fd = raccept(state.sock_fd, (struct sockaddr *) &state.inet_addr, &state.len);
+
+    printf ("[ox-fabrics (RDMA): Client connected, socket ID %d]\n", state.con_fd);
+
+    for(int i = 0; i < OXF_RDMA_COUNT; i++){
+        state.buffers[i].buf = malloc(OXF_RDMA_SIZE);
+        state.buffers[i].size = OXF_RDMA_SIZE;
+        state.buffers[i].status = OXF_RDMA_BUFFER_OPEN;
+
+        if(state.buffers[i].buf == NULL){
+            log_info("Unable to register RDMA buffer %i/%i. Probably out of memory.\n", i, OXF_RDMA_COUNT);
+            return;
+        }
+
+        riomap(
+            state.con_fd,
+            state.buffers[i].buf,
+            state.buffers[i].size,
+            PROT_WRITE, 0, -1
+        );
+    }
+
+    log_info ("[ox-fabrics (RDMA): Sending memory pool to %d]\n", state.con_fd);
+
+    rsend(state.con_fd, state.buffers, sizeof(state.buffers), 0);
+
+    is_running = 1;
+
+    char empty = 0;
+    while(is_running){
+        usleep(5000);
+
+        int bytes = rrecv(state.con_fd, &empty , sizeof(empty), MSG_DONTWAIT);
+
+        if(bytes == 0) goto LISTEN;
+    }
+
+    return NULL;
+}
+
 struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
                                 uint16_t cid, const char *addr, uint16_t port)
 {
-    int sock_fd = 0;
     struct sockaddr_in inet_addr;
     unsigned int len = sizeof (struct sockaddr);
 
     if(state.sock_fd > 0) return oxf_tcp_server_bind(server, cid, addr, port);
 
-    if ( (sock_fd = rsocket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
-        log_err ("[ox-fabrics (RDMA): Socket creation failure. %d]", sock_fd);
+    if ( (state.sock_fd = rsocket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
+        log_err ("[ox-fabrics (RDMA): Socket creation failure. %d]", state.sock_fd);
         return NULL;
     }
 
@@ -64,9 +106,9 @@ struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
     inet_aton(OXF_RDMA_ADDR, &inet_addr.sin_addr);
 
     int RIOs = OXF_RDMA_COUNT;
-    rsetsockopt(sock_fd, SOL_RDMA, RDMA_IOMAPSIZE, (void *) &RIOs, sizeof RIOs);
+    rsetsockopt(state.sock_fd, SOL_RDMA, RDMA_IOMAPSIZE, (void *) &RIOs, sizeof RIOs);
 
-    if ( rbind(sock_fd, (const struct sockaddr *) &inet_addr,
+    if ( rbind(state.sock_fd, (const struct sockaddr *) &inet_addr,
                                     sizeof(inet_addr)) < 0 )
     {
         log_err ("[ox-fabrics (RDMA): Socket bind failure.]");
@@ -74,27 +116,24 @@ struct oxf_server_con *oxf_roce_server_bind (struct oxf_server *server,
     }
 
     /* Put the socket in listen mode to accepting connections */
-    if (rlisten (sock_fd, 16)) {
+    if (rlisten (state.sock_fd, 16)) {
         log_err ("[ox-fabrics (RDMA): Socket listen failure.]");
         goto ERR;
     }
 
     state.inet_addr = inet_addr;
     state.len = len;
-    state.sock_fd = sock_fd;
     state.con_fd = -1;
-    state.is_running = &is_running;
-    state.listen = 1;
 
-    pthread_create(&handler, NULL, &oxf_roce_rdma_handler, &state);
+    pthread_create(&handler, NULL, &oxf_roce_rdma_handler, NULL);
 
-    while(!state.is_running) usleep(1000);
+    usleep(25000);
 
     return oxf_tcp_server_bind(server, cid, addr, port);
 
 ERR:
-    rshutdown (sock_fd, 2);
-    rclose (sock_fd);
+    rshutdown (state.sock_fd, 2);
+    rclose (state.sock_fd);
     return NULL;
 
 }
@@ -103,11 +142,16 @@ void oxf_roce_server_unbind (struct oxf_server_con *con)
 {
   is_running = 0;
 
-  usleep(25000); // Wait for RDMA handler to exit
+  usleep(25000);
 
   if (state.con_fd) rshutdown(state.con_fd, 2);
   rshutdown (state.sock_fd, 2);
   rclose (state.sock_fd);
+
+  usleep(25000);
+
+  // pthread_kill(handler, 9); // the thread may be listening in a blocking state
+
   oxf_tcp_server_unbind(con);
 }
 
@@ -127,29 +171,18 @@ int oxf_roce_server_reply (struct oxf_server_con *con, const void *buf,
   return oxf_tcp_server_reply(con, buf, size, recv_cli);
 }
 
-void oxf_roce_server_map (void *buffer, uint32_t size){
-  printf("Mapping on the server is not allowed in this build.");
-  //riomap(state.con_fd, buffer, size, PROT_WRITE, 0, -1);
-}
-
-void oxf_roce_server_unmap (void *buffer, uint32_t size){
-  printf("Unmapping on the server is not allowed in this build.");
-  //riounmap(state.con_fd, buffer, size);
-}
-
-off_t oxf_roce_server_rdma (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
-
-    if(dir != NVM_DMA_TO_HOST){
-        printf("[ox-fabrics (RDMA): The server can only transfer to the host.]\n");
-        return;
+off_t oxf_roce_server_rdma (void *buf, uint32_t size, uint64_t prp) {
+    if(prp <= 0){
+        log_err("[ox-fabrics (RDMA): The server must pass a valid PRP.]\n");
+        printf("[ox-fabrics (RDMA): The server must pass a valid PRP.]\n");
+        return -1;
     }
 
-    if(prp == NULL){
-        printf("[ox-fabrics (RDMA): The server request a remote PRP.]\n");
-        return;
+    size_t bytes = riowrite(state.con_fd, buf, size, (off_t) prp, 0);
+    if(bytes != size){
+        printf ("[ox-fabrics (RDMA): Incorrect number of bytes transferred. Unrecoverable. %hu/%hu to socket %d]", bytes, size, state.con_fd);
+        log_err ("[ox-fabrics (RDMA): Incorrect number of bytes transferred. Unrecoverable. %hu/%hu to socket %d]", bytes, size, state.con_fd);
     }
-
-    riowrite(state.con_fd, buf, size, (off_t) prp, 0);
     return (off_t) prp;
 }
 
@@ -160,8 +193,6 @@ struct oxf_server_ops oxf_roce_srv_ops = {
     .stop    = oxf_roce_server_con_stop,
     .reply   = oxf_roce_server_reply,
 
-    .map     = oxf_roce_server_map,
-    .unmap     = oxf_roce_server_unmap,
     .rdma    = oxf_roce_server_rdma
 };
 

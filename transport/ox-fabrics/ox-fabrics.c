@@ -62,23 +62,16 @@ extern uint16_t pending_conn;
 
 int oxf_rdma (void *buf, uint32_t size, uint64_t prp, uint8_t dir)
 {
-    printf("RDMA ORG\n");
     switch (dir) {
 
 #if OXF_PROTOCOL == OXF_ROCE
         case NVM_DMA_TO_HOST:
-            // RDMA PUSH (host reads)
-            // 1) rwrite from BUF into PRP
-            printf("DMA to Host\n");
-            printf("%d\n", size);
-            fabrics.server->ops->rdma(buf, size, prp, NVM_DMA_TO_HOST);
+            printf("Transferring from %p to %p\n", buf, prp);
+            fabrics.server->ops->rdma(buf, size, prp);
             break;
         case NVM_DMA_FROM_HOST:
-            // RDMA PULL (host writes) Copy from PRP into BUF
-    	    // 1) requst a push
-    	    // 2) wait until rdma is completed
-            printf("DMA from Host\n");
-            fabrics.server->ops->rdma(buf, size, prp, NVM_DMA_FROM_HOST);
+            memcpy (buf, (void *) prp, size);
+
             break;
 #else
        /* Memory copy is performed if In-capsule data used */
@@ -168,12 +161,7 @@ static uint32_t oxf_fabrics_set_sgl (struct nvmef_capsule_sq *capsule,
     }
 
     while (oxf_get_sgl_desc_length (&desc[desc_i])) {
-
-#if OXF_PROTOCOL == OXF_ROCE
-	goto NEXT;
-#endif
-
-	if (desc[desc_i].type == NVME_SGL_BIT_BUCKET)
+        if (desc[desc_i].type == NVME_SGL_BIT_BUCKET)
             goto NEXT;
 
         if (    (desc[desc_i].type != NVME_SGL_DATA_BLOCK) &&
@@ -198,7 +186,9 @@ static uint32_t oxf_fabrics_set_sgl (struct nvmef_capsule_sq *capsule,
                 break;
             case NVME_SGL_DATA_BLOCK:
             default:
+                #if OXF_PROTOCOL != OXF_ROCE
                 desc[desc_i].data.addr = offset;
+                #endif
                 offset += desc[desc_i].data.length;
                 bytes += desc[desc_i].data.length;
         }

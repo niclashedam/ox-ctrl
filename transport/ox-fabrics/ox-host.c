@@ -86,8 +86,6 @@ static int oxf_get_desc_length (NvmeSGLDesc *desc)
 
 static void oxf_host_rcv_fn (uint32_t size, void *arg)
 {
-    ////------ mark buffer as free
-
     struct oxf_capsule_cq *capsule = (struct oxf_capsule_cq *) arg;
     struct oxf_queue_cmd *qcmd;
     struct NvmeSGLDesc *desc;
@@ -110,40 +108,42 @@ static void oxf_host_rcv_fn (uint32_t size, void *arg)
 
             memcpy (&qcmd->capsule.cqc, &capsule->cqc, size);
 
-#if OXF_PROTOCOL != OXF_ROCE
-	    if (qcmd->is_write)
-		goto WRITES;
-#endif
+            /* Reads: Copy data directly to the user */
+                desc = (NvmeSGLDesc *) qcmd->capsule.sqc.sgl;
+                offset = qcmd->capsule.cqc.data;
 
-            desc = (NvmeSGLDesc *) qcmd->capsule.sqc.sgl;
-            offset = qcmd->capsule.cqc.data;
+                while (oxf_get_desc_length (&desc[desc_i])) {
+                    if (!qcmd->is_write) {
 
-            while (oxf_get_desc_length (&desc[desc_i])) {
 
-                if (desc[desc_i].type == NVME_SGL_BIT_BUCKET)
-                    goto NEXT;
+                        if (desc[desc_i].type == NVME_SGL_BIT_BUCKET)
+                            goto NEXT;
 
-                if ( (desc[desc_i].type != NVME_SGL_DATA_BLOCK) &&
-                     (desc[desc_i].type != NVME_SGL_KEYED_DATA) &&
-                     (desc[desc_i].type != NVME_SGL_5BYTE_KEYS)) {
-                    log_err ("[ox-fabrics: Next Segment descriptors "
-                                                        "NOT supported.]");
-                    return;
-                }
+                            if ( (desc[desc_i].type != NVME_SGL_DATA_BLOCK) &&
+                             (desc[desc_i].type != NVME_SGL_KEYED_DATA) &&
+                             (desc[desc_i].type != NVME_SGL_5BYTE_KEYS)) {
+                            log_err ("[ox-fabrics: Next Segment descriptors "
+                                                                "NOT supported.]");
+                            return;
+                        }
 
-                length = oxf_get_desc_length (&desc[desc_i]);
+                        length = oxf_get_desc_length (&desc[desc_i]);
 
-#if OXF_PROTOL == OXF_ROCE
-	        /* UNMAP RDMA buffers here: (void *) desc[desc_i].data.addr
-		 *   			     length */
-         fabrics.client->ops->unmap(desc[desc_i].data.addr, desc[desc_i].data.length);
-#else
-		/* Reads: Copy data directly to the user */
-		if (!qcmd->is_write) {
-		    memcpy ((void *) desc[desc_i].data.addr, offset, length);
-		    offset += length;
-		}
-#endif
+                        #if OXF_PROTOCOL == OXF_ROCE
+                            if((desc[desc_i].type == NVME_SGL_DATA_BLOCK)){
+                                printf("Unmapping %p\n", desc[desc_i].data.addr);
+                                fabrics.client->ops->unmap(desc[desc_i].data.addr, desc[desc_i].data.length);
+                            }
+                        #else
+                            memcpy ((void *) desc[desc_i].data.addr, offset, length);
+                            offset += length;
+                        #endif
+                    } else {
+                        #if OXF_PROTOCOL == OXF_ROCE
+                            if((desc[desc_i].type == NVME_SGL_DATA_BLOCK) )
+                                fabrics.client->ops->free(desc[desc_i].data.addr);
+                        #endif
+                    }
 
 NEXT:
                 desc_i++;
@@ -152,9 +152,8 @@ NEXT:
                 if (desc_i * sizeof (struct NvmeSGLDesc) >= NVMEF_SGL_SZ)
                     break;
             }
-#if OXF_PROTOCOL != OXF_ROCE
-WRITES:
-#endif
+
+
             ox_mq_complete_req (fabrics.queues[sqid].mq, qcmd->mq_req);
 
             break;
@@ -164,13 +163,16 @@ WRITES:
     }
 }
 
+
 /* This function returns the total bytes to be transferred in the capsule */
 static uint32_t oxf_host_prepare_sq_capsule (struct nvmef_capsule_sq *capsule,
         struct nvme_cmd *ncmd, struct nvme_sgl_desc *desc, uint16_t sgl_size,
                                                             uint8_t is_write)
 {
     uint16_t desc_i;
+#if OXF_PROTOCOL != OXF_ROCE
     uint32_t offset = 0;
+#endif
     uint32_t bytes = (!sgl_size || !desc) ? OXF_FAB_CMD_SZ :
                                                OXF_FAB_CMD_SZ + NVMEF_SGL_SZ;
 
@@ -180,39 +182,18 @@ static uint32_t oxf_host_prepare_sq_capsule (struct nvmef_capsule_sq *capsule,
     if (!sgl_size || !desc)
         return bytes;
 
+#if OXF_PROTOCOL != OXF_ROCE
     memcpy (capsule->sgl, desc, sgl_size * sizeof (NvmeSGLDesc));
-
-#if OXF_PROTOCOL == OXF_ROCE
-    if ( is_write ){
-        size_t size = 0;
-        size_t offset = 0;
-
-        for (desc_i = 0; desc_i < sgl_size; desc_i++) {
-            size += desc[desc_i].data.length;
-        }
-
-        void *buf = malloc(size);
-
-        for (desc_i = 0; desc_i < sgl_size; desc_i++) {
-            if(desc[desc_i].type != NVME_SGL_DATA_BLOCK)
-                continue; // this is really not supposed to happen
-
-            memcpy (buf + offset, (void *) desc[desc_i].data.addr,
-                                                      desc[desc_i].data.length);
-            offset += desc[desc_i].data.length;
-        }
-
-        off_t prp = fabrics.client->ops->rdma(buf, size, 0, NVM_DMA_FROM_HOST);
-
-        capsule->cmd->
-
-        return OXF_FAB_CMD_SZ + NVMEF_SGL_SZ;
-    }
 #endif
 
     for (desc_i = 0; desc_i < sgl_size; desc_i++) {
         if ( is_write && (desc[desc_i].type == NVME_SGL_DATA_BLOCK) ) {
-
+#if OXF_PROTOCOL == OXF_ROCE
+            desc[desc_i].data.addr = fabrics.client->ops->rdma(
+                (void *) desc[desc_i].data.addr,
+                desc[desc_i].data.length
+            );
+#else
             bytes += desc[desc_i].data.length;
 
             if (bytes > OXF_FAB_CAPS_SZ)
@@ -221,6 +202,12 @@ static uint32_t oxf_host_prepare_sq_capsule (struct nvmef_capsule_sq *capsule,
             memcpy (&capsule->data[offset], (void *) desc[desc_i].data.addr,
                                                       desc[desc_i].data.length);
             offset += desc[desc_i].data.length;
+#endif
+        } else if (!is_write && (desc[desc_i].type == NVME_SGL_DATA_BLOCK) ) {
+            #if OXF_PROTOCOL == OXF_ROCE
+                printf("Mapping %p\n", desc[desc_i].data.addr);
+                fabrics.client->ops->map(desc[desc_i].data.addr, desc[desc_i].data.length);
+            #endif
 
         } else if ( is_write && (desc[desc_i].type == NVME_SGL_KEYED_DATA) ) {
             /* Not supported for writes yet */
@@ -228,6 +215,10 @@ static uint32_t oxf_host_prepare_sq_capsule (struct nvmef_capsule_sq *capsule,
             /* Not supported for writes yet */
         }
     }
+
+    #if OXF_PROTOCOL == OXF_ROCE
+        memcpy (capsule->sgl, desc, sgl_size * sizeof (NvmeSGLDesc));
+    #endif
 
     return bytes;
 }
@@ -350,14 +341,7 @@ struct nvme_sgl_desc *oxf_host_alloc_sgl (uint8_t **buf_list, uint32_t *buf_sz,
 
     for (ent_i = 0; ent_i < entries; ent_i++) {
         desc[ent_i].type        = NVME_SGL_DATA_BLOCK;
-
-////------ RDMA FOR READS, ADDR FOR WRITES
-
-#if OXF_PROTOCOL == OXF_ROCE
-	desc[ent_i].subtype     = NVME_SGL_SUB_RDMA;
-#else
-	desc[ent_i].subtype     = NVME_SGL_SUB_ADDR;
-#endif
+	    desc[ent_i].subtype     = NVME_SGL_SUB_ADDR;
 
 	desc[ent_i].data.addr   = (uint64_t) buf_list[ent_i];
         desc[ent_i].data.length = buf_sz[ent_i];
@@ -386,15 +370,7 @@ struct nvme_sgl_desc *oxf_host_alloc_keyed_sgl (uint8_t **buf_list,
             return NULL;
         }
 	desc[ent_i].type         = NVME_SGL_5BYTE_KEYS;
-
-    ////------ RDMA FOR READS, ADDR FOR WRITES
-
-
-#if OXF_PROTOCOL == OXF_ROCE
-	desc[ent_i].subtype      = NVME_SGL_SUB_RDMA;
-#else
 	desc[ent_i].subtype      = NVME_SGL_SUB_ADDR;
-#endif
 
 	desc[ent_i].keyed5.addr   = (uint64_t) buf_list[ent_i];
         desc[ent_i].keyed5.length = buf_sz[ent_i];

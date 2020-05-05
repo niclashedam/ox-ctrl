@@ -394,22 +394,6 @@ static int ocssd_buf_init (void) {
             ox_free (read_buf[i], OX_MEM_MMGR_OCSSD);
             goto FREE;
         }
-
-#if OXF_PROTOCOL == OXF_ROCE
-    /* MAP read  RDMA BUFFERS HERE: read_buf[i]
-     * MAP write RDMA BUFFERS HERE: write_buf[i] */
-    // core.nvm_fabrics->transport_ops->map(read_buf[i],
-    //     ocssd.mmgr_geo.sec_per_pg *
-    //     ocssd.mmgr_geo.n_of_planes *
-    //     (ocssd.mmgr_geo.sec_size + ocssd.mmgr_geo.sec_oob_sz)
-    // );
-    //
-    // core.nvm_fabrics->transport_ops->map(write_buf[i],
-    //     ocssd.mmgr_geo.sec_per_pg *
-    //     ocssd.mmgr_geo.n_of_planes *
-    //     (ocssd.mmgr_geo.sec_size + ocssd.mmgr_geo.sec_oob_sz)
-    // );
-#endif
     }
 
     return 0;
@@ -418,22 +402,6 @@ FREE:
     while (i--) {
         ox_free (read_buf[i], OX_MEM_MMGR_OCSSD);
         ox_free (write_buf[i], OX_MEM_MMGR_OCSSD);
-
-#if OXF_PROTOCOL == OXF_ROCE
-	/* UNMAP read  RDMA BUFFERS HERE: read_buf[i]
-	 * UNMAP write RDMA BUFFERS HERE: write_buf[i] */
-     // core.nvm_fabrics->transport_ops->unmap(read_buf[i],
-     //     ocssd.mmgr_geo.sec_per_pg *
-     //     ocssd.mmgr_geo.n_of_planes *
-     //     (ocssd.mmgr_geo.sec_size + ocssd.mmgr_geo.sec_oob_sz)
-     // );
-     //
-     // core.nvm_fabrics->transport_ops->unmap(write_buf[i],
-     //     ocssd.mmgr_geo.sec_per_pg *
-     //     ocssd.mmgr_geo.n_of_planes *
-     //     (ocssd.mmgr_geo.sec_size + ocssd.mmgr_geo.sec_oob_sz)
-     // );
-#endif
     }
 
     ox_free (read_buf, OX_MEM_MMGR_OCSSD);
@@ -448,22 +416,6 @@ static void ocssd_buf_free (void)
     while (i--) {
         ox_free (read_buf[i], OX_MEM_MMGR_OCSSD);
         ox_free (write_buf[i], OX_MEM_MMGR_OCSSD);
-
-#if OXF_PROTOCOL == OXF_ROCE
-	/* UNMAP read  RDMA BUFFERS HERE: read_buf[i]
-	 * UNMAP write RDMA BUFFERS HERE: write_buf[i] */
-     // core.nvm_fabrics->transport_ops->unmap(read_buf[i],
-     //     ocssd.mmgr_geo.sec_per_pg *
-     //     ocssd.mmgr_geo.n_of_planes *
-     //     (ocssd.mmgr_geo.sec_size + ocssd.mmgr_geo.sec_oob_sz)
-     // );
-     //
-     // core.nvm_fabrics->transport_ops->unmap(write_buf[i],
-     //     ocssd.mmgr_geo.sec_per_pg *
-     //     ocssd.mmgr_geo.n_of_planes *
-     //     (ocssd.mmgr_geo.sec_size + ocssd.mmgr_geo.sec_oob_sz)
-     // );
-#endif
     }
 
     ox_free (read_buf, OX_MEM_MMGR_OCSSD);

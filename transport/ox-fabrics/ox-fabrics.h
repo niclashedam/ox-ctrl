@@ -100,7 +100,6 @@ enum oxf_capsule_types {
 #define OXF_FAB_CAPS_SZ     OXF_CAPSULE_SZ + OXF_FAB_HEADER_SZ
 
 /* RDMA */
-typedef off_t (oxf_transport_rdma) (void *buf, uint32_t size, uint64_t prp, uint8_t dir);
 enum oxf_rdma_buffer_status {
     OXF_RDMA_BUFFER_OPEN,
     OXF_RDMA_BUFFER_RESERVED,
@@ -116,10 +115,8 @@ struct oxf_rdma_buffer {
 struct oxf_rdma_state {
   int sock_fd;
   int con_fd;
-  int *is_running;
   struct sockaddr_in inet_addr;
   unsigned int len;
-  unsigned int listen;
   struct oxf_rdma_buffer buffers[OXF_RDMA_COUNT];
 };
 
@@ -253,8 +250,7 @@ typedef int  (oxf_svr_reply) (struct oxf_server_con *con, const void *buf,
 typedef struct oxf_server_con *(oxf_svr_bind) (struct oxf_server *server,
                             uint16_t conn_id, const char *addr, uint16_t port);
 
-typedef void (oxf_svr_map) (void *buffer, uint32_t size);
-typedef void (oxf_svr_unmap) (void *buffer, uint32_t size);
+typedef off_t (oxf_svr_rdma) (void *buf, uint32_t size, uint64_t prp);
 
 struct oxf_server_ops {
     oxf_svr_bind          *bind;
@@ -263,9 +259,7 @@ struct oxf_server_ops {
     oxf_svr_conn_stop     *stop;
     oxf_svr_reply         *reply;
 
-    oxf_svr_map           *map;
-    oxf_svr_unmap	  *unmap;
-    oxf_transport_rdma          *rdma;
+    oxf_svr_rdma          *rdma;
 };
 
 struct oxf_server {
@@ -291,6 +285,8 @@ typedef int                (oxf_cli_send) (struct oxf_client_con *con,
 typedef struct oxf_client_con *(oxf_cli_connect) (struct oxf_client *client,
       uint16_t cid, const char *addr, uint16_t port, oxf_rcv_reply_fn *recv_fn);
 
+typedef off_t (oxf_cli_rdma) (void *buf, uint32_t size);
+typedef void (oxf_cli_free) (void *buf);
 typedef void (oxf_cli_map) (void *buffer, uint32_t size);
 typedef void (oxf_cli_unmap) (void *buffer, uint32_t size);
 
@@ -301,7 +297,8 @@ struct oxf_client_ops {
 
     oxf_cli_map           *map;
     oxf_cli_unmap           *unmap;
-    oxf_transport_rdma	*rdma;
+    oxf_cli_free        *free;
+    oxf_cli_rdma	   *rdma;
 };
 
 struct oxf_client {

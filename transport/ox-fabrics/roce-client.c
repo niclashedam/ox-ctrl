@@ -32,25 +32,23 @@
 #include <signal.h>
 #include <tcp.h>
 #include <ox-fabrics.h>
-#include <roce-rdma.h>
+#include <assert.h>
 
 #include <rdma/rsocket.h>
 
-static int is_running;
 struct oxf_rdma_state state;
-pthread_t handler;
+pthread_mutex_t mutex;
 
 static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client,
        uint16_t cid, const char *addr, uint16_t port, oxf_rcv_reply_fn *recv_fn)
 {
-    int sock_fd = -1;
     struct sockaddr_in inet_addr;
     unsigned int len = sizeof (struct sockaddr);
 
     if(state.con_fd > 0) return oxf_tcp_client_connect(client, cid, addr, port, recv_fn);
 
-    if ( (sock_fd = rsocket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
-        log_err ("[ox-fabrics (RDMA): Socket creation failure. %d]", sock_fd);
+    if ( (state.con_fd = rsocket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
+        log_err ("[ox-fabrics (RDMA): Socket creation failure. %d]", state.con_fd);
         return NULL;
     }
 
@@ -59,24 +57,27 @@ static struct oxf_client_con *oxf_roce_client_connect (struct oxf_client *client
     inet_aton(OXF_RDMA_ADDR, &inet_addr.sin_addr);
 
     int RIOs = OXF_RDMA_COUNT;
-    rsetsockopt(sock_fd, SOL_RDMA, RDMA_IOMAPSIZE, (void *) &RIOs, sizeof RIOs);
+    rsetsockopt(state.con_fd, SOL_RDMA, RDMA_IOMAPSIZE, (void *) &RIOs, sizeof RIOs);
 
-    if ( rconnect(sock_fd, (const struct sockaddr *) &inet_addr, len) < 0){
+    pthread_mutex_lock(&mutex);
+
+    if (rconnect(state.con_fd, (const struct sockaddr *) &inet_addr, len) < 0){
         printf ("[ox-fabrics (RDMA): Socket connection failure.]\n");
-        rshutdown(sock_fd, 2);
-        rclose(sock_fd);
+        rshutdown (state.con_fd, 2);
+        rclose (state.con_fd);
         return NULL;
     }
 
+    log_info ("[ox-fabrics (RDMA): Connected to server, socket ID %d]\n", state.con_fd);
+
     state.inet_addr = inet_addr;
     state.len = len;
-    state.con_fd = sock_fd; // bottom up because we are a client
-    state.listen = 0;
-    state.is_running = &is_running;
 
-    pthread_create(&handler, NULL, &oxf_roce_rdma_handler, &state);
+    rrecv(state.con_fd, state.buffers, sizeof(state.buffers), 0);
 
-    while(!state.is_running) usleep(1000);
+    log_info ("[ox-fabrics (RDMA): Received memory pool from %d]\n", state.con_fd);
+
+    pthread_mutex_unlock(&mutex);
 
     return oxf_tcp_client_connect(client, cid, addr, port, recv_fn);
 }
@@ -90,9 +91,7 @@ static int oxf_roce_client_send (struct oxf_client_con *con, uint32_t size,
 
 void oxf_roce_client_disconnect (struct oxf_client_con *con)
 {
-    is_running = 0;
-
-    usleep(25000); // Wait for RDMA handler to exit
+    usleep(25000);
 
     rshutdown (state.con_fd, 2);
     rclose (state.con_fd);
@@ -106,37 +105,56 @@ void oxf_roce_client_exit (struct oxf_client *client)
 }
 
 void oxf_roce_client_map (void *buffer, uint32_t size){
+  pthread_mutex_lock(&mutex);
   riomap(state.con_fd, buffer, size, PROT_WRITE, 0, -1);
+  pthread_mutex_unlock(&mutex);
 }
 
 void oxf_roce_client_unmap (void *buffer, uint32_t size){
+  pthread_mutex_lock(&mutex);
   riounmap(state.con_fd, buffer, size);
+  pthread_mutex_unlock(&mutex);
 }
 
-off_t oxf_roce_client_rdma (void *buf, uint32_t size, uint64_t prp, uint8_t dir) {
-RETRY:
-  if(dir != NVM_DMA_FROM_HOST){
-      printf("[ox-fabrics (RDMA): The host can only transfer from the host.]\n");
-      return -1;
-  }
+void oxf_roce_client_free (void *buffer){
+    pthread_mutex_lock(&mutex);
+    for(int i = 0; i < OXF_RDMA_COUNT; i++){
+        if(state.buffers[i].buf != buffer) continue;
+        state.buffers[i].status = OXF_RDMA_BUFFER_OPEN;
+    }
+    pthread_mutex_unlock(&mutex);
+}
 
-  if(prp > 0){
-      printf("[ox-fabrics (RDMA): The host does not accept a remote PRP.]\n");
-      return -1;
-  }
 
+off_t oxf_roce_client_rdma (void *buf, uint32_t size) {
   struct oxf_rdma_buffer *buffer = NULL;
+
+  RETRY:
+  pthread_mutex_lock(&mutex);
   for(int i = 0; i < OXF_RDMA_COUNT; i++){
       if(state.buffers[i].status != OXF_RDMA_BUFFER_OPEN) continue;
+
       buffer = &state.buffers[i];
+      break;
   }
 
-  if(buffer == NULL) goto RETRY;
+  if(buffer == NULL){
+      pthread_mutex_unlock(&mutex);
+      usleep(5000);
+      goto RETRY;
+  }
 
   buffer->status = OXF_RDMA_BUFFER_RESERVED;
+  pthread_mutex_unlock(&mutex);
+
   off_t offset = (off_t) buffer->buf;
-  riowrite(state.con_fd, buf, size, offset, 0);
-  rsend(state.con_fd, &offset, sizeof(offset), 0);
+
+  size_t bytes = riowrite(state.con_fd, buf, size, offset, 0);
+  if(bytes != size){
+      printf ("[ox-fabrics (RDMA): Incorrect number of bytes transferred. Unrecoverable. %hu/%hu to socket %d]", bytes, size, state.con_fd);
+      log_err ("[ox-fabrics (RDMA): Incorrect number of bytes transferred. Unrecoverable. %hu/%hu to socket %d]", bytes, size, state.con_fd);
+   }
+
 
   return offset;
 }
@@ -148,7 +166,8 @@ struct oxf_client_ops oxf_roce_cli_ops = {
 
     .map     = oxf_roce_client_map,
     .unmap     = oxf_roce_client_unmap,
-    .rdma = oxf_roce_client_rdma
+    .rdma = oxf_roce_client_rdma,
+    .free = oxf_roce_client_free
 };
 
 struct oxf_client *oxf_roce_client_init (void)

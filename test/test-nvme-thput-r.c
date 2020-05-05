@@ -17,7 +17,7 @@
 #define NVME_TEST_LBA_IO        (NVME_TEST_IO_SZ / NVMEH_BLK_SZ)
 
 /* Number of I/Os */
-#define NVME_TEST_IOS           1
+#define NVME_TEST_IOS           4
 
 /* Offsets containing the LBA for read check */
 #define CHECK_OFFSET1           16
